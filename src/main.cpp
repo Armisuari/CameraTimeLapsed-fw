@@ -1,18 +1,22 @@
 #include <Arduino.h>
+// #include "live_streaming.pb.h"
 
-// put function declarations here:
-int myFunction(int, int);
+#include <stdio.h>
+#include <pb_encode.h>
+#include <pb_decode.h>
 
-void setup() {
+#include "live_stream.pb.h"
+
+void setup()
+{
   // put your setup code here, to run once:
-  int result = myFunction(2, 3);
+  /* This is the buffer where we will store our message. */
+  uint8_t buffer[128];
+  size_t message_length;
+  bool status;
 }
 
-void loop() {
+void loop()
+{
   // put your main code here, to run repeatedly:
-}
-
-// put function definitions here:
-int myFunction(int x, int y) {
-  return x + y;
 }
