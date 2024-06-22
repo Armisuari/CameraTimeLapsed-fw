@@ -257,14 +257,14 @@ extern "C"
 #define open_gopro_RequestGetLiveStreamStatus_DEFAULT NULL
 
 #define open_gopro_RequestSetLiveStreamMode_FIELDLIST(X, a) \
-    X(a, STATIC, OPTIONAL, STRING, url, 1)                  \
-    X(a, STATIC, OPTIONAL, BOOL, encode, 2)                 \
-    X(a, STATIC, OPTIONAL, UENUM, window_size, 3)           \
+    X(a, STATIC, REQUIRED, STRING, url, 1)                  \
+    X(a, STATIC, REQUIRED, BOOL, encode, 2)                 \
+    X(a, STATIC, REQUIRED, UENUM, window_size, 3)           \
     X(a, CALLBACK, OPTIONAL, BYTES, cert, 6)                \
-    X(a, STATIC, OPTIONAL, INT32, minimum_bitrate, 7)       \
-    X(a, STATIC, OPTIONAL, INT32, maximum_bitrate, 8)       \
-    X(a, STATIC, OPTIONAL, INT32, starting_bitrate, 9)      \
-    X(a, STATIC, OPTIONAL, UENUM, lens, 10)
+    X(a, STATIC, REQUIRED, INT32, minimum_bitrate, 7)       \
+    X(a, STATIC, REQUIRED, INT32, maximum_bitrate, 8)       \
+    X(a, STATIC, REQUIRED, INT32, starting_bitrate, 9)      \
+    X(a, STATIC, REQUIRED, UENUM, lens, 10)
 #define open_gopro_RequestSetLiveStreamMode_CALLBACK pb_default_field_callback
 #define open_gopro_RequestSetLiveStreamMode_DEFAULT (const pb_byte_t *)"\x18\x04\x00"
 
