@@ -29,54 +29,54 @@ static BLEAdvertisedDevice *myDevice;
 
 void BLEsendCommand(byte *command)
 {
-  //  pRemoteCharacteristic->writeValue(newValue.c_str(), newValue.length());
-  pRemoteCharacteristic->writeValue(command, sizeof(command));
+    //  pRemoteCharacteristic->writeValue(newValue.c_str(), newValue.length());
+    pRemoteCharacteristic->writeValue(command, sizeof(command));
 }
 void connectToWiFi()
 {
-  WiFi.begin(SSID, PASSWORD);
-  Serial.println("Connecting to GoPro AP..");
-  while (WiFi.status() != WL_CONNECTED)
-  {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println("");
-  Serial.println("Connected to GoPro AP");
+    WiFi.begin(SSID, PASSWORD);
+    Serial.println("Connecting to GoPro AP..");
+    while (WiFi.status() != WL_CONNECTED)
+    {
+        delay(500);
+        Serial.print(".");
+    }
+    Serial.println("");
+    Serial.println("Connected to GoPro AP");
 }
 
 void httpGetRequest(const char *url)
 {
-  // Check WiFi connection status
-  if (WiFi.status() == WL_CONNECTED)
-  {
-    HTTPClient http;
-
-    // Your Domain name with URL path or IP address with path
-    http.begin(url);
-
-    // Send HTTP GET request
-    int httpResponseCode = http.GET();
-
-    if (httpResponseCode > 0)
+    // Check WiFi connection status
+    if (WiFi.status() == WL_CONNECTED)
     {
-      Serial.print("HTTP Response code: ");
-      Serial.println(httpResponseCode);
-      String payload = http.getString();
-      Serial.println(payload);
+        HTTPClient http;
+
+        // Your Domain name with URL path or IP address with path
+        http.begin(url);
+
+        // Send HTTP GET request
+        int httpResponseCode = http.GET();
+
+        if (httpResponseCode > 0)
+        {
+            Serial.print("HTTP Response code: ");
+            Serial.println(httpResponseCode);
+            String payload = http.getString();
+            Serial.println(payload);
+        }
+        else
+        {
+            Serial.print("Error code: ");
+            Serial.println(httpResponseCode);
+        }
+        // Free resources
+        http.end();
     }
     else
     {
-      Serial.print("Error code: ");
-      Serial.println(httpResponseCode);
+        Serial.println("WiFi Disconnected");
     }
-    // Free resources
-    http.end();
-  }
-  else
-  {
-    Serial.println("WiFi Disconnected");
-  }
 }
 
 static void notifyCallback(
@@ -85,99 +85,99 @@ static void notifyCallback(
     size_t length,
     bool isNotify)
 {
-  Serial.print("Notify callback for characteristic ");
-  Serial.print(pBLERemoteCharacteristic->getUUID().toString().c_str());
-  Serial.print(" of data length ");
-  Serial.println(length);
-  Serial.print("data: ");
-  Serial.println((char *)pData);
+    Serial.print("Notify callback for characteristic ");
+    Serial.print(pBLERemoteCharacteristic->getUUID().toString().c_str());
+    Serial.print(" of data length ");
+    Serial.println(length);
+    Serial.print("data: ");
+    Serial.println((char *)pData);
 }
 
 /**  None of these are required as they will be handled by the library with defaults. **
  **                       Remove as you see fit for your needs                        */
 class MyClientCallback : public BLEClientCallbacks
 {
-  void onConnect(BLEClient *pclient)
-  {
-    Serial.println("Connectedd");
-  }
+    void onConnect(BLEClient *pclient)
+    {
+        Serial.println("Connectedd");
+    }
 
-  void onDisconnect(BLEClient *pclient)
-  {
-    connected = false;
-    APenabled = false;
-    Serial.println("onDisconnect");
-  }
-  /***************** New - Security handled here ********************
-  ****** Note: these are the same return values as defaults ********/
-  uint32_t onPassKeyRequest()
-  {
-    Serial.println("Client PassKeyRequest");
-    return 123456;
-  }
-  bool onConfirmPIN(uint32_t pass_key)
-  {
-    Serial.print("The passkey YES/NO number: ");
-    Serial.println(pass_key);
-    return true;
-  }
+    void onDisconnect(BLEClient *pclient)
+    {
+        connected = false;
+        APenabled = false;
+        Serial.println("onDisconnect");
+    }
+    /***************** New - Security handled here ********************
+    ****** Note: these are the same return values as defaults ********/
+    uint32_t onPassKeyRequest()
+    {
+        Serial.println("Client PassKeyRequest");
+        return 123456;
+    }
+    bool onConfirmPIN(uint32_t pass_key)
+    {
+        Serial.print("The passkey YES/NO number: ");
+        Serial.println(pass_key);
+        return true;
+    }
 
-  void onAuthenticationComplete(ble_gap_conn_desc desc)
-  {
-    Serial.println("Starting BLE work!");
-  }
-  /*******************************************************************/
+    void onAuthenticationComplete(ble_gap_conn_desc desc)
+    {
+        Serial.println("Starting BLE work!");
+    }
+    /*******************************************************************/
 };
 
 bool connectToServer()
 {
-  Serial.print("Forming a connection to ");
-  Serial.println(myDevice->getAddress().toString().c_str());
+    Serial.print("Forming a connection to ");
+    Serial.println(myDevice->getAddress().toString().c_str());
 
-  BLEClient *pClient = BLEDevice::createClient();
-  Serial.println(" - Created client");
+    BLEClient *pClient = BLEDevice::createClient();
+    Serial.println(" - Created client");
 
-  pClient->setClientCallbacks(new MyClientCallback());
+    pClient->setClientCallbacks(new MyClientCallback());
 
-  // Connect to the remove BLE Server.
-  pClient->connect(myDevice); // if you pass BLEAdvertisedDevice instead of address, it will be recognized type of peer device address (public or private)
-  Serial.println(" - Connected to server");
+    // Connect to the remove BLE Server.
+    pClient->connect(myDevice); // if you pass BLEAdvertisedDevice instead of address, it will be recognized type of peer device address (public or private)
+    Serial.println(" - Connected to server");
 
-  // Obtain a reference to the service we are after in the remote BLE server.
-  BLERemoteService *pRemoteService = pClient->getService(serviceUUID);
-  if (pRemoteService == nullptr)
-  {
-    Serial.print("Failed to find our service UUID: ");
-    Serial.println(serviceUUID.toString().c_str());
-    pClient->disconnect();
-    return false;
-  }
-  Serial.println(" - Found our service");
+    // Obtain a reference to the service we are after in the remote BLE server.
+    BLERemoteService *pRemoteService = pClient->getService(serviceUUID);
+    if (pRemoteService == nullptr)
+    {
+        Serial.print("Failed to find our service UUID: ");
+        Serial.println(serviceUUID.toString().c_str());
+        pClient->disconnect();
+        return false;
+    }
+    Serial.println(" - Found our service");
 
-  // Obtain a reference to the characteristic in the service of the remote BLE server.
-  pRemoteCharacteristic = pRemoteService->getCharacteristic(charUUID);
-  if (pRemoteCharacteristic == nullptr)
-  {
-    Serial.print("Failed to find our characteristic UUID: ");
-    Serial.println(charUUID.toString().c_str());
-    pClient->disconnect();
-    return false;
-  }
-  Serial.println(" - Found our characteristic");
+    // Obtain a reference to the characteristic in the service of the remote BLE server.
+    pRemoteCharacteristic = pRemoteService->getCharacteristic(charUUID);
+    if (pRemoteCharacteristic == nullptr)
+    {
+        Serial.print("Failed to find our characteristic UUID: ");
+        Serial.println(charUUID.toString().c_str());
+        pClient->disconnect();
+        return false;
+    }
+    Serial.println(" - Found our characteristic");
 
-  // Read the value of the characteristic.
-  if (pRemoteCharacteristic->canRead())
-  {
-    std::string value = pRemoteCharacteristic->readValue();
-    Serial.print("The characteristic value was: ");
-    Serial.println(value.c_str());
-  }
+    // Read the value of the characteristic.
+    if (pRemoteCharacteristic->canRead())
+    {
+        std::string value = pRemoteCharacteristic->readValue();
+        Serial.print("The characteristic value was: ");
+        Serial.println(value.c_str());
+    }
 
-  if (pRemoteCharacteristic->canNotify())
-    pRemoteCharacteristic->registerForNotify(notifyCallback);
+    if (pRemoteCharacteristic->canNotify())
+        pRemoteCharacteristic->registerForNotify(notifyCallback);
 
-  connected = true;
-  return true;
+    connected = true;
+    return true;
 }
 
 /**
@@ -185,35 +185,35 @@ bool connectToServer()
  */
 class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks
 {
-  /**
-   * Called for each advertising BLE server.
-   */
+    /**
+     * Called for each advertising BLE server.
+     */
 
-  /*** Only a reference to the advertised device is passed now
-    void onResult(BLEAdvertisedDevice advertisedDevice) { **/
-  void onResult(BLEAdvertisedDevice *advertisedDevice)
-  {
-    Serial.print("BLE Advertised Device found: ");
-    Serial.println(advertisedDevice->toString().c_str());
-
-    // We have found a device, let us now see if it contains the service we are looking for.
-    /********************************************************************************
-        if (advertisedDevice.haveServiceUUID() && advertisedDevice.isAdvertisingService(serviceUUID)) {
-    ********************************************************************************/
-    if (advertisedDevice->haveServiceUUID() && advertisedDevice->isAdvertisingService(serviceUUID))
+    /*** Only a reference to the advertised device is passed now
+      void onResult(BLEAdvertisedDevice advertisedDevice) { **/
+    void onResult(BLEAdvertisedDevice *advertisedDevice)
     {
+        Serial.print("BLE Advertised Device found: ");
+        Serial.println(advertisedDevice->toString().c_str());
 
-      BLEDevice::getScan()->stop();
-      /*******************************************************************
-            myDevice = new BLEAdvertisedDevice(advertisedDevice);
-      *******************************************************************/
-      myDevice = advertisedDevice; /** Just save the reference now, no need to copy the object */
-      doConnect = true;
-      doScan = true;
+        // We have found a device, let us now see if it contains the service we are looking for.
+        /********************************************************************************
+            if (advertisedDevice.haveServiceUUID() && advertisedDevice.isAdvertisingService(serviceUUID)) {
+        ********************************************************************************/
+        if (advertisedDevice->haveServiceUUID() && advertisedDevice->isAdvertisingService(serviceUUID))
+        {
 
-    } // Found our server
-  }   // onResult
-};    // MyAdvertisedDeviceCallbacks
+            BLEDevice::getScan()->stop();
+            /*******************************************************************
+                  myDevice = new BLEAdvertisedDevice(advertisedDevice);
+            *******************************************************************/
+            myDevice = advertisedDevice; /** Just save the reference now, no need to copy the object */
+            doConnect = true;
+            doScan = true;
+
+        } // Found our server
+    } // onResult
+}; // MyAdvertisedDeviceCallbacks
 
 /* This is the buffer where we will store our message. */
 uint8_t buffer[128];
@@ -222,68 +222,78 @@ bool status;
 
 void setup()
 {
-  Serial.begin(115200);
-  Serial.println("Starting ESP32 BLE Client application...");
-  BLEDevice::init("ESP32 MCU");
+    Serial.begin(115200);
+    Serial.println("Starting ESP32 BLE Client application...");
+    BLEDevice::init("ESP32 MCU");
 
-  // Retrieve a Scanner and set the callback we want to use to be informed when we
-  // have detected a new device.  Specify that we want active scanning and start the
-  // scan to run for 5 seconds.
-  BLEScan *pBLEScan = BLEDevice::getScan();
-  pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
-  pBLEScan->setInterval(1349);
-  pBLEScan->setWindow(449);
-  pBLEScan->setActiveScan(true);
-  pBLEScan->start(5, false);
+    // Retrieve a Scanner and set the callback we want to use to be informed when we
+    // have detected a new device.  Specify that we want active scanning and start the
+    // scan to run for 5 seconds.
+    BLEScan *pBLEScan = BLEDevice::getScan();
+    pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
+    pBLEScan->setInterval(1349);
+    pBLEScan->setWindow(449);
+    pBLEScan->setActiveScan(true);
+    pBLEScan->start(5, false);
 }
 
 void loop()
 {
 
-  // ENCODE
-  open_gopro_RequestSetLiveStreamMode message = open_gopro_RequestSetLiveStreamMode_init_zero;
+    // ENCODE
+    open_gopro_RequestSetLiveStreamMode message = open_gopro_RequestSetLiveStreamMode_init_zero;
 
-  pb_ostream_t ostream = pb_ostream_from_buffer(buffer, sizeof(buffer));
+    pb_ostream_t ostream = pb_ostream_from_buffer(buffer, sizeof(buffer));
 
-  message.minimum_bitrate = 720;
-  strcpy(message.url, "rtmp://angkasatimelapse.com/live/mykey");
-  message.maximum_bitrate = 1080;
+    message.minimum_bitrate = 720;
+    strcpy(message.url, "rtmp://angkasatimelapse.com/live/mykey");
+    message.maximum_bitrate = 1080;
 
-  status = pb_encode(&ostream, open_gopro_RequestSetLiveStreamMode_fields, &message);
-  message_length = ostream.bytes_written;
+    status = pb_encode(&ostream, open_gopro_RequestSetLiveStreamMode_fields, &message);
+    message_length = ostream.bytes_written;
 
-  if (!status)
-  {
-    Serial.printf("Encoding failed: %s\n", PB_GET_ERROR(&ostream));
-  }
-  byte start_livestream_command[] = {0xF1, 0x79};
-  BLEsendCommand(start_livestream_command);
+    if (!status)
+    {
+        Serial.printf("Encoding failed: %s\n", PB_GET_ERROR(&ostream));
+    }
 
-  for (int i = 0; i < 128; i++)
-  {
-    Serial.print(buffer[i]);
-  }
+    // Create a new buffer to hold the command bytes + encoded message
+    uint8_t full_message[message_length + 2];
+    full_message[0] = 0xF1;
+    full_message[1] = 0x79;
 
-  // DECODE
-  open_gopro_RequestSetLiveStreamMode message2 = open_gopro_RequestSetLiveStreamMode_init_zero;
+    // Copy the encoded message into the new buffer
+    memcpy(full_message + 2, buffer, message_length);
 
-  pb_istream_t istream = pb_istream_from_buffer(buffer, message_length);
+    // byte start_livestream_command[] = {0xF1, 0x79};
+    BLEsendCommand(full_message);
 
-  status = pb_decode(&istream, open_gopro_RequestSetLiveStreamMode_fields, &message2);
+    // for (int i = 0; i < 128; i++)
+    // {
+    //     Serial.print(buffer[i]);
+    // }
 
-  if (!status)
-  {
-    Serial.printf("Decoding failed: %s\n", PB_GET_ERROR(&istream));
-  }
+    //   // DECODE
+    //   open_gopro_RequestSetLiveStreamMode message2 = open_gopro_RequestSetLiveStreamMode_init_zero;
 
-  Serial.println(message.url);
-  Serial.println(message.minimum_bitrate);
-  Serial.println(message.maximum_bitrate);
-  Serial.println(sizeof(buffer));
-  Serial.println(ostream.bytes_written);
-  Serial.println(message2.url);
-  Serial.println(message2.minimum_bitrate);
-  Serial.println(message2.maximum_bitrate);
-  Serial.println(sizeof(buffer));
-  delay(3000);
+    //   pb_istream_t istream = pb_istream_from_buffer(buffer, message_length);
+
+    //   status = pb_decode(&istream, open_gopro_RequestSetLiveStreamMode_fields, &message2);
+
+    //   if (!status)
+    //   {
+    //     Serial.printf("Decoding failed: %s\n", PB_GET_ERROR(&istream));
+    //   }
+
+    Serial.println();
+    Serial.println(message.url);
+    Serial.println(message.minimum_bitrate);
+    Serial.println(message.maximum_bitrate);
+    Serial.println(sizeof(buffer));
+    Serial.println(ostream.bytes_written);
+    //   Serial.println(message2.url);
+    //   Serial.println(message2.minimum_bitrate);
+    //   Serial.println(message2.maximum_bitrate);
+    //   Serial.println(sizeof(buffer));
+    delay(3000);
 }
