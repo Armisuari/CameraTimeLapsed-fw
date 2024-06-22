@@ -212,8 +212,8 @@ class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks
             doScan = true;
 
         } // Found our server
-    } // onResult
-}; // MyAdvertisedDeviceCallbacks
+    }     // onResult
+};        // MyAdvertisedDeviceCallbacks
 
 /* This is the buffer where we will store our message. */
 uint8_t buffer[128];
@@ -240,60 +240,101 @@ void setup()
 void loop()
 {
 
-    // ENCODE
-    open_gopro_RequestSetLiveStreamMode message = open_gopro_RequestSetLiveStreamMode_init_zero;
-
-    pb_ostream_t ostream = pb_ostream_from_buffer(buffer, sizeof(buffer));
-
-    message.minimum_bitrate = 720;
-    strcpy(message.url, "rtmp://angkasatimelapse.com/live/mykey");
-    message.maximum_bitrate = 1080;
-
-    status = pb_encode(&ostream, open_gopro_RequestSetLiveStreamMode_fields, &message);
-    message_length = ostream.bytes_written;
-
-    if (!status)
+    if (doConnect == true)
     {
-        Serial.printf("Encoding failed: %s\n", PB_GET_ERROR(&ostream));
+        if (connectToServer())
+        {
+            Serial.println("We are now connected to the BLE Server.");
+            // entah kenapa mesti kirim string nomor dulu biar bisa connect to BLE GoPro
+            String newValue = "1";
+            byte shutter_command[] = {0x03, 0x01, 0x01, 0x01};
+            Serial.println("Confirm Connected");
+
+            pRemoteCharacteristic->writeValue(newValue.c_str(), newValue.length());
+        }
+        else
+        {
+            Serial.println("We have failed to connect to the server; there is nothin more we will do.");
+        }
+        doConnect = false;
     }
 
-    // Create a new buffer to hold the command bytes + encoded message
-    uint8_t full_message[message_length + 2];
-    full_message[0] = 0xF1;
-    full_message[1] = 0x79;
+    // If we are connected to a peer BLE Server, update the characteristic each time we are reached
+    // with the current time since boot.
+    if (connected)
+    {
 
-    // Copy the encoded message into the new buffer
-    memcpy(full_message + 2, buffer, message_length);
+        // if (!APenabled)
+        // {
+        //     byte enable_AP_command[] = {0x03, 0x17, 0x01, 0x01};
+        //     pRemoteCharacteristic->writeValue(enable_AP_command, sizeof(enable_AP_command));
+        //     APenabled = true;
+        //     Serial.println("Access Point Enabled");
+        //     connectToWiFi();
+        // }
+        // ENCODE
+        open_gopro_RequestSetLiveStreamMode message = open_gopro_RequestSetLiveStreamMode_init_zero;
 
-    // byte start_livestream_command[] = {0xF1, 0x79};
-    BLEsendCommand(full_message);
+        pb_ostream_t ostream = pb_ostream_from_buffer(buffer, sizeof(buffer));
 
-    // for (int i = 0; i < 128; i++)
-    // {
-    //     Serial.print(buffer[i]);
-    // }
+        message.minimum_bitrate = 720;
+        strcpy(message.url, "rtmp://angkasatimelapse.com/live/mykey");
+        message.maximum_bitrate = 1080;
 
-    //   // DECODE
-    //   open_gopro_RequestSetLiveStreamMode message2 = open_gopro_RequestSetLiveStreamMode_init_zero;
+        status = pb_encode(&ostream, open_gopro_RequestSetLiveStreamMode_fields, &message);
+        message_length = ostream.bytes_written;
 
-    //   pb_istream_t istream = pb_istream_from_buffer(buffer, message_length);
+        if (!status)
+        {
+            Serial.printf("Encoding failed: %s\n", PB_GET_ERROR(&ostream));
+        }
 
-    //   status = pb_decode(&istream, open_gopro_RequestSetLiveStreamMode_fields, &message2);
+        // Create a new buffer to hold the command bytes + encoded message
+        uint8_t full_message[message_length + 2];
+        full_message[0] = 0xF1;
+        full_message[1] = 0x79;
 
-    //   if (!status)
-    //   {
-    //     Serial.printf("Decoding failed: %s\n", PB_GET_ERROR(&istream));
-    //   }
+        // Copy the encoded message into the new buffer
+        memcpy(full_message + 2, buffer, message_length);
 
-    Serial.println();
-    Serial.println(message.url);
-    Serial.println(message.minimum_bitrate);
-    Serial.println(message.maximum_bitrate);
-    Serial.println(sizeof(buffer));
-    Serial.println(ostream.bytes_written);
-    //   Serial.println(message2.url);
-    //   Serial.println(message2.minimum_bitrate);
-    //   Serial.println(message2.maximum_bitrate);
-    //   Serial.println(sizeof(buffer));
-    delay(3000);
+        // byte start_livestream_command[] = {0xF1, 0x79};
+        BLEsendCommand(full_message);
+
+        // for (int i = 0; i < 128; i++)
+        // {
+        //     Serial.print(buffer[i]);
+        // }
+
+        //   // DECODE
+        //   open_gopro_RequestSetLiveStreamMode message2 = open_gopro_RequestSetLiveStreamMode_init_zero;
+
+        //   pb_istream_t istream = pb_istream_from_buffer(buffer, message_length);
+
+        //   status = pb_decode(&istream, open_gopro_RequestSetLiveStreamMode_fields, &message2);
+
+        //   if (!status)
+        //   {
+        //     Serial.printf("Decoding failed: %s\n", PB_GET_ERROR(&istream));
+        //   }
+
+        Serial.println();
+        Serial.println(message.url);
+        Serial.println(message.minimum_bitrate);
+        Serial.println(message.maximum_bitrate);
+        Serial.println(sizeof(buffer));
+        Serial.println(ostream.bytes_written);
+        //   Serial.println(message2.url);
+        //   Serial.println(message2.minimum_bitrate);
+        //   Serial.println(message2.maximum_bitrate);
+        //   Serial.println(sizeof(buffer));
+        delay(10000);
+        byte shutter_command[] = {0x03, 0x01, 0x01, 0x01};
+        BLEsendCommand(shutter_command);
+    }
+    else if (doScan)
+    {
+        BLEDevice::getScan()->start(0); // this is just eample to start scan after disconnect, most likely there is better way to do it in arduino
+    }
+
+    delay(5000);
 }
