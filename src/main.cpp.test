@@ -1,21 +1,20 @@
 #include <Arduino.h>
-
 #include <stdio.h>
 #include <pb_encode.h>
 #include <pb_decode.h>
-
-#include "live_stream.pb.h"
+#include "network_management.pb.h"
 
 #include "NimBLEDevice.h"
 #include <WiFi.h>
 #include <HTTPClient.h>
 
 // The remote service we wish to connect to.
-static BLEUUID serviceUUID("0000fea6-0000-1000-8000-00805f9b34fb");
-// static BLEUUID serviceUUID("0xfea6");
+// static BLEUUID serviceUUID("0000fea6-0000-1000-8000-00805f9b34fb");
+static BLEUUID serviceUUID("fea6");
+static BLEUUID serviceUUID_network("b5f90090-aa8d-11e3-9046-0002a5d5c51b");
 // The characteristic of the remote service we are interested in.
-static BLEUUID charUUID("b5f90072-aa8d-11e3-9046-0002a5d5c51b");
-// static BLEUUID charUUID("b5f90001-aa8d-11e3-9046-0002a5d5c51b");
+static BLEUUID charUUID_command("b5f90072-aa8d-11e3-9046-0002a5d5c51b");    //command
+static BLEUUID charUUID_network("b5f90091-aa8d-11e3-9046-0002a5d5c51b"); // network management command
 
 const char *SSID = "GoPro Hero 9 Angkasa";
 const char *PASSWORD = "NPc-hg6-S5S";
@@ -129,7 +128,7 @@ class MyClientCallback : public BLEClientCallbacks
     /*******************************************************************/
 };
 
-bool connectToServer()
+bool connectToServer(BLEUUID serviceUUID, BLEUUID charUUID)
 {
     Serial.print("Forming a connection to ");
     Serial.println(myDevice->getAddress().toString().c_str());
@@ -241,15 +240,14 @@ void loop()
 {
     if (doConnect == true)
     {
-        if (connectToServer())
+        if (connectToServer(serviceUUID_network, charUUID_network))
         {
-            Serial.println("We are now connected to the BLE Server.");
+            Serial.println("We are now connected to the BLE Network Service.");
             // entah kenapa mesti kirim string nomor dulu biar bisa connect to BLE GoPro
             String newValue = "1";
-            byte shutter_command[] = {0x03, 0x01, 0x01, 0x01};
-            Serial.println("Confirm Connected");
-
             pRemoteCharacteristic->writeValue(newValue.c_str(), newValue.length());
+
+            Serial.println("Confirm Connected");
         }
         else
         {
@@ -272,37 +270,39 @@ void loop()
         //     connectToWiFi();
         // }
         // ENCODE
-        open_gopro_RequestSetLiveStreamMode message = open_gopro_RequestSetLiveStreamMode_init_zero;
+        open_gopro_RequestConnectNew message = open_gopro_RequestConnectNew_init_zero;
 
-        pb_ostream_t ostream = pb_ostream_from_buffer(buffer, sizeof(buffer));
+        /* Create a stream that will write to our buffer. */
+        pb_ostream_t stream = pb_ostream_from_buffer(buffer, sizeof(buffer));
 
-        message.minimum_bitrate = 720;
-        strcpy(message.url, "rtmp://angkasatimelapse.com/live/mykey");
-        message.maximum_bitrate = 1080;
+        /* Fill in the lucky number */
+        strcpy(message.ssid, "portable");
+        strcpy(message.password, "pwassord");
 
-        status = pb_encode(&ostream, open_gopro_RequestSetLiveStreamMode_fields, &message);
-        message_length = ostream.bytes_written;
+        /* Now we are ready to encode the message! */
+        status = pb_encode(&stream, open_gopro_RequestConnectNew_fields, &message);
+        message_length = stream.bytes_written;
 
+        /* Then just check for any errors.. */
         if (!status)
         {
-            Serial.printf("Encoding failed: %s\n", PB_GET_ERROR(&ostream));
+            printf("Encoding failed: %s\n", PB_GET_ERROR(&stream));
+            return;
         }
 
-        // Create a new buffer to hold the command bytes + encoded message
         uint8_t full_message[message_length + 2];
-        full_message[0] = 0xF1;
-        full_message[1] = 0x79;
+        full_message[0] = 0x02;
+        full_message[1] = 0x05;
 
         // Copy the encoded message into the new buffer
         memcpy(full_message + 2, buffer, message_length);
-
         // byte start_livestream_command[] = {0xF1, 0x79};
         BLEsendCommand(full_message);
 
-        // for (int i = 0; i < 128; i++)
-        // {
-        //     Serial.print(buffer[i]);
-        // }
+        Serial.println(message_length);
+        Serial.println(message.ssid);
+        Serial.println(message.password);
+        Serial.println("Connecting to WiFi");
 
         //   // DECODE
         //   open_gopro_RequestSetLiveStreamMode message2 = open_gopro_RequestSetLiveStreamMode_init_zero;
@@ -316,19 +316,19 @@ void loop()
         //     Serial.printf("Decoding failed: %s\n", PB_GET_ERROR(&istream));
         //   }
 
-        Serial.println();
-        Serial.println(message.url);
-        Serial.println(message.minimum_bitrate);
-        Serial.println(message.maximum_bitrate);
-        Serial.println(sizeof(buffer));
-        Serial.println(ostream.bytes_written);
+        // Serial.println();
+        // Serial.println(message.url);
+        // Serial.println(message.minimum_bitrate);
+        // Serial.println(message.maximum_bitrate);
+        // Serial.println(sizeof(buffer));
+        // Serial.println(ostream.bytes_written);
         //   Serial.println(message2.url);
         //   Serial.println(message2.minimum_bitrate);
         //   Serial.println(message2.maximum_bitrate);
         //   Serial.println(sizeof(buffer));
         delay(10000);
-        byte shutter_command[] = {0x03, 0x01, 0x01, 0x01};
-        BLEsendCommand(shutter_command);
+        // byte shutter_command[] = {0x03, 0x01, 0x01, 0x01};
+        // BLEsendCommand(shutter_command);
     }
     else if (doScan)
     {
