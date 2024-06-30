@@ -17,7 +17,7 @@ void MQTTHandler::reconnect()
     while (!client.connected())
     {
         Serial.print("Attempting MQTT connection...");
-        clientId += std::string(random(0xffff), HEX);
+        clientId += String(random(0xffff), HEX);
         if (client.connect(clientId.c_str()))
         {
             Serial.println("connected");
@@ -52,115 +52,58 @@ void MQTTHandler::handleCallback(char *topic, byte *payload, unsigned int length
     }
     Serial.println();
 
+    _message = "";
+
     // Convert payload to string
     for (int i = 0; i < length; i++)
     {
         _message += (char)payload[i];
     }
-
-    // Now payloadStr contains the payload data as a string
-    Serial.println(_message.c_str());
-
-    // DynamicJsonDocument doc(1024);
-    // DeserializationError error = deserializeJson(doc, payload, length);
-    // if (error)
-    // {
-    //     Serial.print("deserializeJson() failed: ");
-    //     Serial.println(error.c_str());
-    //     return;
-    // }
-
-    // if (doc.containsKey("stream"))
-    // {
-    //     const char *message = doc["stream"];
-    //     Serial.print("Data: ");
-    //     Serial.println(message);
-
-    //     // Call the other function with the extracted message
-    //     bool success = processMessage(message);
-    //     if (success)
-    //     {
-    //         Serial.println("Message processed successfully.");
-    //     }
-    //     else
-    //     {
-    //         Serial.println("Failed to process message.");
-    //     }
-    // }
-    // else
-    // {
-    //     Serial.println("Key 'stream' not found in JSON");
-    // }
 }
 
 // bool MQTTHandler::processMessage(const char *message)
 bool MQTTHandler::processMessage(std::string &message)
 {
-    static int stat = atoi(_message.c_str());
-    static int lastStat = 0;
+    static std::string lastMsg;
 
-    log_d("stat = %d", stat);
-    if (lastStat == stat)
+    // static uint64_t lastUpdate;
+    // if (millis() - lastUpdate >= 1000U)
+    // {
+    //     lastUpdate = millis();
+    //     log_d("lastMsg = %s", lastMsg.c_str());
+    // }
+
+    if (_message == lastMsg)
     {
         return false;
     }
 
-    lastStat = stat;
+    log_i("data changed");
     message = _message;
+    lastMsg = _message;
 
     return true;
-
-    // Serial.print("Processing message: ");
-    // Serial.println(message);
-
-    // stat = atoi(message);
-
-    // Serial.printf("stat = %d\n", stat);
-
-    // if (lastStat != stat)
-    // {
-    //     Serial.println("Data change");
-    //     MySerial.printf("{"
-    //                     "\"stream\" : %d }",
-    //                     stat);
-    //     lastStat = stat;
-    //     Serial.printf("lastStat = %d\n", lastStat);
-    //     return false;
-    // }
-    // else
-    // {
-    //     Serial.println("do nothing");
-    //     return true;
-    // }
 }
 
 void MQTTHandler::init()
 {
-    pinMode(BUILTIN_LED, OUTPUT);
-    Serial.begin(115200);
-    MySerial.begin(115200, SERIAL_8N1, 16, 17);
     _wifi.init();
     client.setServer(mqtt_server, mqtt_port);
     // client.setCallback(callback);
     client.setCallback(MQTTHandler::callback);
 
-    _taskThread = std::thread(&MQTTHandler::taskFunc, this);
+    // _taskThread = std::thread(&MQTTHandler::taskFunc, this);
+    xTaskCreate(taskFunc, "taskFunc", 1024 * 4, this, 1, NULL);
 }
 
 // void MQTTHandler::loop()
 // {
+//     // this->taskFunc();
 //     if (!client.connected())
 //     {
 //         reconnect();
 //     }
 //     client.loop();
-
-//     // unsigned long now = millis();
-//     // if (now - lastMsg > 2000) {
-//     //     lastMsg = now;
-//     //     ++value;
-//     // }
-
 // }
 
 bool MQTTHandler::publish(std::string message)
@@ -196,14 +139,26 @@ bool MQTTHandler::publish(std::string message)
     return true;
 }
 
-void MQTTHandler::taskFunc()
+// void MQTTHandler::taskFunc()
+// {
+//     while (_running)
+//     {
+//         if (!client.connected())
+//         {
+//             reconnect();
+//         }
+//         client.loop();
+//     }
+// }
+void MQTTHandler::taskFunc(void *pvParam)
 {
-    while (_running)
+    MQTTHandler *app = static_cast<MQTTHandler *>(pvParam);
+    while (true)
     {
-        if (!client.connected())
+        if (!app->client.connected())
         {
-            reconnect();
+            app->reconnect();
         }
-        client.loop();
+        app->client.loop();
     }
 }

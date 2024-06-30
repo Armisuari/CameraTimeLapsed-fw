@@ -42,9 +42,10 @@ private:
     static MQTTHandler *instance;
 
     std::string _message;
-    std::string clientId = "ESP32Client-";
+    String clientId = "ESP32Client-";
 
-    void taskFunc();
+    static void taskFunc(void *pvParam);
+    // void taskFunc();
 
     std::atomic<bool> _running{true};
     std::thread _taskThread;
