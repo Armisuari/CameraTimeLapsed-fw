@@ -1,6 +1,6 @@
 #include "PlatformForwarder.h"
 
-PlatformForwarder* PlatformForwarder::instance = nullptr;
+PlatformForwarder *PlatformForwarder::instance = nullptr;
 
 PlatformForwarder::PlatformForwarder(SerialInterface &device)
     : _device(device)
@@ -10,6 +10,7 @@ PlatformForwarder::PlatformForwarder(SerialInterface &device)
 
 bool PlatformForwarder::begin()
 {
+    delay(4000);
     _mqtt.init();
     bool res = _device.begin();
 
@@ -18,7 +19,6 @@ bool PlatformForwarder::begin()
         return false;
     }
 
-    // _device.setCallback(sendToPlatform);
     _device.setCallback(sendToPlatform);
 
     return true;
@@ -26,10 +26,12 @@ bool PlatformForwarder::begin()
 
 bool PlatformForwarder::deviceHandling()
 {
+    _device.loop();
     receiveCommand = _mqtt.processMessage(msgCommand);
+    // log_d("receiveCommnad = %s", receiveCommand ? "true" : "false");
     if (receiveCommand)
     {
-        _device.sendComm(msgCommand);
+        _device.sendComm(msgCommand); // send to raspi
     }
 
     return true;
