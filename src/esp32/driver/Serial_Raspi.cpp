@@ -12,8 +12,14 @@ bool Serial_Raspi::begin()
     return true;
 }
 
+void Serial_Raspi::loop()
+{
+    this->taskFunc();
+}
+
 bool Serial_Raspi::sendComm(std::string _msg)
 {
+    log_d("send command");
     raspiSerial.print(_msg.c_str());
     return true;
 }
@@ -25,8 +31,8 @@ void Serial_Raspi::setCallback(SerialCallback callback)
 
 void Serial_Raspi::taskFunc()
 {
-    while (_running)
-    {
+    // while (_running)
+    // {
         // Check if data is available on Serial2
         if (raspiSerial.available())
         {
@@ -38,5 +44,5 @@ void Serial_Raspi::taskFunc()
                 onSerialReceived(message.c_str());
             }
         }
-    }
+    // }
 }

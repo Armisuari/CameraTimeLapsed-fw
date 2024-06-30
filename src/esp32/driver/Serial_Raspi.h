@@ -15,6 +15,7 @@ public:
     bool begin();
     bool sendComm(std::string _msg);
     void setCallback(SerialCallback callback);
+    void loop();
 
 private:
     HardwareSerial raspiSerial{1};
