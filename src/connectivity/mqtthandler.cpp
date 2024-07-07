@@ -101,7 +101,7 @@ bool MQTTHandler::processMessage(std::string &message)
 void MQTTHandler::handleconfig(const char* thisconfig,unsigned int length){
 
 
-    DynamicJsonDocument doc(1024);
+    JsonDocument doc;
     DeserializationError error = deserializeJson(doc, thisconfig, length);
     if (error) {
         Serial.print("deserializeJson() failed: ");
