@@ -100,7 +100,7 @@ bool MQTTHandler::processMessage(std::string &message)
 
 void MQTTHandler::handleconfig(const char* thisconfig,unsigned int length){
 
-
+    _message = "";
     DynamicJsonDocument doc(1024);
     DeserializationError error = deserializeJson(doc, thisconfig, length);
     if (error) {
@@ -326,11 +326,11 @@ void MQTTHandler::handleconfig(const char* thisconfig,unsigned int length){
     }
 
     _message = "{" + std::string("\"shutter\":") + std::to_string(shutterdata) + "," + 
-               "\"iso\":" + std::to_string(isodata) + 
-               "\"awb\":" +  std::to_string(awbdata) + 
+               "\"iso\":" + std::to_string(isodata) + "," + 
+               "\"awb\":" +  std::to_string(awbdata) + "," + 
                "\"ev\":" + std::to_string(evdata) + "}";
 
-    Serial.println(_message.c_str());
+    // Serial.println(_message.c_str());
 }
 
 void MQTTHandler::init()
