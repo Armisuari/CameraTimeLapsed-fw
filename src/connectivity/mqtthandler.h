@@ -24,6 +24,7 @@ private:
     void reconnect();
     static void callback(char *topic, byte *payload, unsigned int length);
     void handleCallback(char *topic, byte *payload, unsigned int length);
+    void handleconfig(const char* thisconfig, unsigned int length);
 
     const char *ssid;
     const char *password;
@@ -38,10 +39,15 @@ private:
     char msg[MSG_BUFFER_SIZE];
     int lastStat; // Declare lastStat as a member variable
     int stat;
+    int shutterdata;
+    int isodata;
+    int awbdata;
+    int evdata;
 
     static MQTTHandler *instance;
 
     std::string _message;
+    const char* thisconfig;
     String clientId = "ESP32Client-";
 
     static void taskFunc(void *pvParam);
