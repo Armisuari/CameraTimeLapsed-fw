@@ -7,7 +7,7 @@ WifiHandler _wifi(CONFIG_MAIN_WIFI_DEFAULT_SSID, CONFIG_MAIN_WIFI_DEFAULT_PASS);
 MQTTHandler *MQTTHandler::instance = nullptr; // Initialize the static instance pointer
 
 MQTTHandler::MQTTHandler(const char *ssid, const char *password, const char *mqtt_server, int mqtt_port)
-    : ssid(ssid), password(password), mqtt_server(mqtt_server), mqtt_port(mqtt_port), client(espClient), _running(true)
+    : ssid(ssid), password(password), mqtt_server(mqtt_server), mqtt_port(mqtt_port), client(espClient)
 {
     instance = this; // Set the static instance pointer to this instance
 }
@@ -61,17 +61,9 @@ void MQTTHandler::handleCallback(char *topic, byte *payload, unsigned int length
     }
 }
 
-// bool MQTTHandler::processMessage(const char *message)
 bool MQTTHandler::processMessage(std::string &message)
 {
     static std::string lastMsg;
-
-    // static uint64_t lastUpdate;
-    // if (millis() - lastUpdate >= 1000U)
-    // {
-    //     lastUpdate = millis();
-    //     log_d("lastMsg = %s", lastMsg.c_str());
-    // }
 
     if (_message == lastMsg)
     {
@@ -89,22 +81,10 @@ void MQTTHandler::init()
 {
     _wifi.init();
     client.setServer(mqtt_server, mqtt_port);
-    // client.setCallback(callback);
     client.setCallback(MQTTHandler::callback);
 
-    // _taskThread = std::thread(&MQTTHandler::taskFunc, this);
     xTaskCreate(taskFunc, "taskFunc", 1024 * 4, this, 1, NULL);
 }
-
-// void MQTTHandler::loop()
-// {
-//     // this->taskFunc();
-//     if (!client.connected())
-//     {
-//         reconnect();
-//     }
-//     client.loop();
-// }
 
 bool MQTTHandler::publish(std::string message)
 {
@@ -139,17 +119,6 @@ bool MQTTHandler::publish(std::string message)
     return true;
 }
 
-// void MQTTHandler::taskFunc()
-// {
-//     while (_running)
-//     {
-//         if (!client.connected())
-//         {
-//             reconnect();
-//         }
-//         client.loop();
-//     }
-// }
 void MQTTHandler::taskFunc(void *pvParam)
 {
     MQTTHandler *app = static_cast<MQTTHandler *>(pvParam);

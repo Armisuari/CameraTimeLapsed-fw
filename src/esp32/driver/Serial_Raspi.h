@@ -27,6 +27,4 @@ private:
     SerialCallback onSerialReceived;
 
     void taskFunc();
-    std::atomic<bool> _running{true};
-    std::thread _taskThread;
 };

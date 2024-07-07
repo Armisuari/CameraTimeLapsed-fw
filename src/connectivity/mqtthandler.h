@@ -15,8 +15,6 @@ class MQTTHandler
 public:
     MQTTHandler(const char *ssid, const char *password, const char *mqtt_server, int mqtt_port);
     void init();
-    // void loop();
-    // bool processMessage(const char* message);
     bool processMessage(std::string &message);
     bool publish(std::string message);
 
@@ -45,8 +43,4 @@ private:
     String clientId = "ESP32Client-";
 
     static void taskFunc(void *pvParam);
-    // void taskFunc();
-
-    std::atomic<bool> _running{true};
-    std::thread _taskThread;
 };
