@@ -1,0 +1,3 @@
+[submodule "opengopro-python"]
+	path = src/raspi/opengopro-python
+	url = https://github.com/afdhalfauzi/opengopro-python.git
