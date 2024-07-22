@@ -2,23 +2,33 @@
 
 #include <string>
 #include <functional>
+
 #include "CONFIG.h"
 #include "connectivity/mqtthandler.h"
+
 #include <SerialInterface.h>
+#include <interface/TimeInterface.h>
+
+#include <features/captureScheduler.h>
 
 class PlatformForwarder
 {
     public:
-        PlatformForwarder(SerialInterface &device);
+        PlatformForwarder(SerialInterface &device, TimeInterface &time);
         bool begin();
-        bool deviceHandling();
+        bool deviceHandler();
 
     private:
         MQTTHandler _mqtt{CONFIG_MAIN_WIFI_DEFAULT_SSID, CONFIG_MAIN_WIFI_DEFAULT_PASS, CONFIG_MAIN_SERVER, 1883};
+
         SerialInterface &_device;
+        TimeInterface &_time;
+
+        CaptureScheduleHandler capScheduler{_time};
 
         bool receiveCommand = false;
         std::string msgCommand;
         static PlatformForwarder* instance;
+
         static void sendToPlatform(std::string msg);
 };
