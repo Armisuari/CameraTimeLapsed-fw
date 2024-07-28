@@ -13,5 +13,5 @@ public:
 
 private:
     const char *ntpServer = "pool.ntp.org";
-    int timezone = 8;
+    int timezone = 7;
 };
