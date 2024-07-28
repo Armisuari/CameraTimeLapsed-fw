@@ -1,7 +1,7 @@
 #include "captureScheduler.h"
 
 CaptureScheduleHandler::CaptureScheduleHandler(TimeInterface &time)
-: _time(time)
+    : _time(time)
 {
 }
 
@@ -20,9 +20,10 @@ bool CaptureScheduleHandler::trigCapture()
     uint32_t startTime = convertHourToEpoch(timeNow, startHour);
     uint32_t stopTime = convertHourToEpoch(timeNow, stopHour);
 
-    log_i("Current time: %s", _time.getTimeStamp());
+    log_i("Current time: %s", _time.getTimeStamp().c_str());
+    log_i("timeNow:%i\t startTime:%i stopTime:%i", timeNow, startTime, stopTime);
 
-    bool isTimeRange = startTime >= startTime && startTime < stopTime;
+    bool isTimeRange = timeNow >= startTime && timeNow < stopTime;
     log_i("is the current time is within the range ? : %s", isTimeRange ? "yes" : "no");
 
     // Check if the current time is within the start and stop time range
@@ -56,9 +57,11 @@ bool CaptureScheduleHandler::trigCapture()
     return false;
 }
 
-uint32_t CaptureScheduleHandler::convertHourToEpoch(uint32_t unixTime, int hour) {
+uint32_t CaptureScheduleHandler::convertHourToEpoch(uint32_t unixTime, int hour)
+{
     // Ensure the hour is valid
-    if (hour < 0 || hour > 23) {
+    if (hour < 0 || hour > 23)
+    {
         return unixTime; // Return the original time if the hour is invalid
     }
 
