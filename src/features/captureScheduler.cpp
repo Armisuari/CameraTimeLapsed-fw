@@ -19,12 +19,16 @@ bool CaptureScheduleHandler::trigCapture()
     uint32_t timeNow = _time.getCurrentTime();
     uint32_t startTime = convertHourToEpoch(timeNow, startHour);
     uint32_t stopTime = convertHourToEpoch(timeNow, stopHour);
-
-    log_i("Current time: %s", _time.getTimeStamp().c_str());
-    log_i("timeNow:%i\t startTime:%i stopTime:%i", timeNow, startTime, stopTime);
-
     bool isTimeRange = timeNow >= startTime && timeNow < stopTime;
-    log_i("is the current time is within the range ? : %s", isTimeRange ? "yes" : "no");
+
+    static uint64_t lastPrint;
+    if (millis() - lastPrint >= 1000U)
+    {
+        lastPrint = millis();
+        log_i("Current time: %s", _time.getTimeStamp().c_str());
+        log_i("timeNow:%i\t startTime:%i stopTime:%i", timeNow, startTime, stopTime);
+        log_i("is the current time is within the range ? : %s", isTimeRange ? "yes" : "no");
+    }
 
     // Check if the current time is within the start and stop time range
     if (isTimeRange)
@@ -75,7 +79,10 @@ uint32_t CaptureScheduleHandler::convertHourToEpoch(uint32_t unixTime, int hour)
     timeInfo->tm_sec = 0;
 
     // Convert back to epoch time
-    uint32_t newUnixTime = static_cast<uint32_t>(mktime(timeInfo));
+    uint32_t newUnixTimeGMT = static_cast<uint32_t>(mktime(timeInfo));
 
-    return newUnixTime;
+    // Minus 7 hours (25200 seconds) to convert to GMT+7
+    uint32_t newUnixTimeGMT7 = newUnixTimeGMT - 25200;
+
+    return newUnixTimeGMT7;
 }
