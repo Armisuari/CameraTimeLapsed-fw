@@ -6,6 +6,7 @@
 #include "connectivity/mqtthandler.h"
 
 #include <esp32/driver/Serial_Raspi.h>
+#include <esp32/driver/Storage_LittleFS.h>
 #ifndef DEBUG_ONLY_ESP
 #include <esp32/driver/Time_DS3231.h>
 Time_DS3231 ds3231;
@@ -15,13 +16,13 @@ Time_ntp ntp;
 #endif
 
 Serial_Raspi raspi;
+Storage_LittleFS lfs;
 
 #ifndef DEBUG_ONLY_ESP
 PlatformForwarder app(raspi, ds3231);
 #else
-PlatformForwarder app(raspi, ntp);
+PlatformForwarder app(raspi, ntp, lfs);
 #endif
-
 
 void setup()
 {

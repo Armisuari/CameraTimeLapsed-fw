@@ -71,6 +71,13 @@ bool MQTTHandler::processMessage(std::string &message)
         return false;
     }
 
+    if (_message == "{\"reqConfig\" : 1}")
+    {
+        message = _message;
+        _message = "";
+        return false;
+    }
+
     // Check if command is about changing config
     if (_message.find("Shutter") != std::string::npos)
     {
@@ -78,17 +85,12 @@ bool MQTTHandler::processMessage(std::string &message)
         handleConfig(_message.c_str(), _message.length());
     }
 
-    if (_message == "{\"reqConfig\":1}")
-    {
-        // _message = storage.readFile()
-    }
     message = _message;
     _message = "";
 
     return true;
 }
 
-// void MQTTHandler::handleConfig(std::string config)
 void MQTTHandler::handleConfig(const char *config, unsigned int length)
 {
     JsonDocument doc;
