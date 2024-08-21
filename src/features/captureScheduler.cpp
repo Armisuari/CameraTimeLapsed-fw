@@ -8,54 +8,80 @@ CaptureScheduleHandler::CaptureScheduleHandler(TimeInterface &time)
 bool CaptureScheduleHandler::begin()
 {
     // Calculate the interval in seconds (240 intervals in total)
-    interval = ((stopHour - startHour) * 60 * 60) / numCapture;
-    log_i("Interval time : %.2f minute or %d second", (float)interval / 60, interval);
+    if (stopHour > startHour)
+        interval = ((stopHour - startHour) * 60 * 60) / numCapture;
+    else
+        interval = ((24 + stopHour - startHour) * 60 * 60) / numCapture;
+    // log_i("Interval time : %.2f minute or %d second", (float)interval / 60, interval);
+    log_i("Interval time : %.2f minute or %d second stop:%d start:%d", (float)interval / 60, interval, stopHour, startHour);
 
     return true;
 }
 
-bool CaptureScheduleHandler::trigCapture()
+bool CaptureScheduleHandler::trigCapture(bool enable)
 {
-    uint32_t timeNow = _time.getCurrentTime();
-    uint32_t startTime = convertHourToEpoch(timeNow, startHour);
-    uint32_t stopTime = convertHourToEpoch(timeNow, stopHour);
-    bool isTimeRange = timeNow >= startTime && timeNow < stopTime;
-
-    static uint64_t lastPrint;
-    if (millis() - lastPrint >= 1000U)
+    if (enable)
     {
-        lastPrint = millis();
-        log_i("Current time: %s", _time.getTimeStamp().c_str());
-        log_i("timeNow:%i\t startTime:%i stopTime:%i", timeNow, startTime, stopTime);
-        log_i("is the current time is within the range ? : %s", isTimeRange ? "yes" : "no");
-    }
+        uint32_t timeNow = _time.getCurrentTime();
+        // uint32_t startTime = convertHourToEpoch(timeNow, startHour);
+        // uint32_t stopTime = convertHourToEpoch(timeNow, stopHour);
+        uint32_t startTime;
+        uint32_t stopTime = convertHourToEpoch(timeNow, stopHour);
 
-    // Check if the current time is within the start and stop time range
-    if (isTimeRange)
-    {
-        if (!trigstat)
+        // only update startTime if time is reaches stopTime
+        if (timeNow > stopTime)
         {
-            _trigEpoch = timeNow + interval;
-            trigstat = true;
+            startTime = convertHourToEpoch(timeNow, startHour);
         }
-        log_i("Current epoch time: %u", timeNow);
-        log_i("Next trigger epoch time: %u", _trigEpoch);
-
-        if (timeNow >= _trigEpoch)
+        // stopTime into next day
+        if (stopTime < startTime)
         {
-            static int count;
-            count += 1;
-            log_i("Capture Trigger : %d\n", count);
-            if (count >= numCapture)
-                count = 0;
-            _trigEpoch = timeNow + interval;
-            return true;
+            stopTime += 24 * 3600;
         }
-    }
-    else
-    {
-        // Reset trigger status if out of bounds
-        trigstat = false;
+        bool isTimeRange = timeNow >= startTime && timeNow < stopTime;
+
+        static uint64_t lastPrint;
+        if (millis() - lastPrint >= 1000U)
+        {
+            lastPrint = millis();
+            log_i("Current time: %s", _time.getTimeStamp().c_str());
+            log_i("timeNow:%i startTime:%i stopTime:%i", timeNow, startTime, stopTime);
+            log_i("is the current time is within the range ? : %s", isTimeRange ? "yes" : "no");
+        }
+
+        // Check if the current time is within the start and stop time range
+        if (isTimeRange)
+        {
+            if (!trigstat)
+            {
+                _trigEpoch = timeNow + interval;
+                trigstat = true;
+            }
+            static uint64_t lastPrint;
+            if (millis() - lastPrint >= 1000U)
+            {
+                lastPrint = millis();
+                log_i("Current epoch time: %u", timeNow);
+                log_i("Next trigger epoch time: %u", _trigEpoch);
+            }
+            if (timeNow >= _trigEpoch)
+            {
+                static int count;
+                count += 1;
+                log_i("Capture Trigger : %d\n", count);
+                if (count >= numCapture)
+                    count = 0;
+                _trigEpoch = timeNow + interval;
+                return true;
+            }
+        }
+        else
+        {
+            // Reset trigger status if out of bounds
+            trigstat = false;
+        }
+
+        return false;
     }
 
     return false;
@@ -70,7 +96,7 @@ uint32_t CaptureScheduleHandler::convertHourToEpoch(uint32_t unixTime, int hour)
     }
 
     // Convert unixTime to tm structure
-    time_t rawTime = unixTime;
+    time_t rawTime = unixTime + 25200;
     struct tm *timeInfo = gmtime(&rawTime);
 
     // Set the hour
