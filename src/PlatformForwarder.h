@@ -33,4 +33,5 @@ private:
     static PlatformForwarder *instance;
 
     static void sendToPlatform(std::string msg);
+    static void callback(std::string msg);
 };

@@ -12,6 +12,9 @@ public:
     CaptureScheduleHandler(TimeInterface &time);
     bool begin();
     bool trigCapture(bool enable);
+    uint8_t skippedCapture();
+    uint8_t captureCount = 0;
+    uint8_t skippedCaptureCount = 0;
 
 private:
     uint32_t convertHourToEpoch(uint32_t unixTime, int hour);

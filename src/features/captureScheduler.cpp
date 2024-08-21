@@ -79,12 +79,24 @@ bool CaptureScheduleHandler::trigCapture(bool enable)
         {
             // Reset trigger status if out of bounds
             trigstat = false;
+
+            // Count total of skipped capture
+            if (captureCount != 0)
+            {
+                skippedCaptureCount = numCapture - captureCount;
+                captureCount = 0;
+            }
         }
 
         return false;
     }
 
     return false;
+}
+
+uint8_t CaptureScheduleHandler::skippedCapture()
+{
+    return skippedCaptureCount;
 }
 
 uint32_t CaptureScheduleHandler::convertHourToEpoch(uint32_t unixTime, int hour)

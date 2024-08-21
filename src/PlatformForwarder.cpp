@@ -20,7 +20,7 @@ bool PlatformForwarder::begin()
         return false;
     }
 
-    _device.setCallback(sendToPlatform);
+    _device.setCallback(callback);
 
     capScheduler.begin();
 
@@ -40,13 +40,20 @@ bool PlatformForwarder::deviceHandler()
     {
         _device.sendComm("{\"capture\":1}");
     }
+    else if (capScheduler.skippedCapture() > 0)
+    {
+        // send number of skipped capture to raspi
+        std::string text = "{\"skippedCapture\":" + std::to_string(capScheduler.skippedCapture()) + "}";
+        _device.sendComm(text);
+        capScheduler.skippedCaptureCount = 0;
+    }
     else if (msgCommand == "{\"reqConfig\" : 1}")
     {
         Serial.print("readFile() : ");
         std::string configJson = _storage.readFile();
         Serial.println(configJson.c_str());
         instance->_mqtt.publish(configJson);
-        msgCommand="";
+        msgCommand = "";
     }
 
     return true;
@@ -57,4 +64,16 @@ void PlatformForwarder::sendToPlatform(std::string msg)
     instance->_storage.writeFile(msg);
     log_i("send message to platform : %s", msg.c_str());
     instance->_mqtt.publish(msg);
+}
+
+void PlatformForwarder::callback(std::string msg)
+{
+    if (msg == "captured")
+    {
+        instance->capScheduler.captureCount++;
+    }
+    else
+    {
+        sendToPlatform(msg);
+    }
 }
