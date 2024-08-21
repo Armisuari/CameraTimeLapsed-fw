@@ -334,7 +334,24 @@ void MQTTHandler::handleConfig(const char *config, unsigned int length)
         }
     }
 
-    _message = "{" + std::string("\"shutter\":") + std::to_string(shutterdata) + "," +
+    if (doc.containsKey("ScheduleEnabled"))
+    {
+        const char *isSchedule = doc["ScheduleEnabled"];
+        Serial.print("Schedule Data: ");
+        Serial.println(isSchedule);
+        if (strcmp(isSchedule, "1") == 0)
+        {
+            isScheduleOn = true;
+            Serial.println("Scheduled capture enabled");
+        }
+        else
+        {
+            isScheduleOn = false;
+            Serial.println("Scheduled capture disabled");
+        }
+    }
+
+    _message = "{" + std::string("\"shu\":") + std::to_string(shutterdata) + "," +
                "\"iso\":" + std::to_string(isodata) + "," +
                "\"awb\":" + std::to_string(awbdata) + "," +
                "\"ev\":" + std::to_string(evdata) + "}";
@@ -395,4 +412,9 @@ void MQTTHandler::taskFunc(void *pvParam)
         }
         app->client.loop();
     }
+}
+
+bool MQTTHandler::isScheduleEnabled()
+{
+    return isScheduleOn;
 }

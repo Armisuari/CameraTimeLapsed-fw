@@ -17,6 +17,7 @@ public:
     void init();
     bool processMessage(std::string &message);
     bool publish(std::string message);
+    bool isScheduleEnabled();
 
 private:
     void reconnect();
@@ -41,6 +42,7 @@ private:
     int isodata;
     int awbdata;
     int evdata;
+    bool isScheduleOn = true;
 
     static MQTTHandler *instance;
 

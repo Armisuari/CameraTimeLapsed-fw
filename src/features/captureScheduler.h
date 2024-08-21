@@ -11,7 +11,7 @@ class CaptureScheduleHandler
 public:
     CaptureScheduleHandler(TimeInterface &time);
     bool begin();
-    bool trigCapture();
+    bool trigCapture(bool enable);
 
 private:
     uint32_t convertHourToEpoch(uint32_t unixTime, int hour);
@@ -21,8 +21,8 @@ private:
     bool trigstat = false;
     uint32_t _trigEpoch;
 
-    int startHour = 9;
-    int stopHour = 10;
+    int startHour = 0;
+    int stopHour = 1;
     uint32_t interval;
     uint32_t numCapture = 240;
 };

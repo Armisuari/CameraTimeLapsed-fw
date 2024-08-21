@@ -36,17 +36,17 @@ bool PlatformForwarder::deviceHandler()
     {
         _device.sendComm(msgCommand); // send to raspi
     }
-    else if (capScheduler.trigCapture())
+    else if (capScheduler.trigCapture(_mqtt.isScheduleEnabled()))
     {
         _device.sendComm("{\"capture\":1}");
     }
     else if (msgCommand == "{\"reqConfig\" : 1}")
     {
         Serial.print("readFile() : ");
-        msgCommand = _storage.readFile();
-        Serial.println(msgCommand.c_str());
-        instance->_mqtt.publish(msgCommand);
-        // _mqtt.publish(msgCommand);
+        std::string configJson = _storage.readFile();
+        Serial.println(configJson.c_str());
+        instance->_mqtt.publish(configJson);
+        msgCommand="";
     }
 
     return true;
