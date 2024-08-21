@@ -18,7 +18,7 @@ void Serial_Raspi::loop()
 
 bool Serial_Raspi::sendComm(std::string _msg)
 {
-    log_d("send command");
+    log_d("send command %s", _msg.c_str());
     raspiSerial.print(_msg.c_str());
     return true;
 }
