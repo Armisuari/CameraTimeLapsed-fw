@@ -28,6 +28,9 @@ bool CaptureScheduleHandler::trigCapture(bool enable)
         uint32_t startTime;
         uint32_t stopTime = convertHourToEpoch(timeNow, stopHour);
 
+        if (startTime == 0)
+            startTime = convertHourToEpoch(timeNow, startHour);
+
         // only update startTime if time is reaches stopTime
         if (timeNow > stopTime)
         {
