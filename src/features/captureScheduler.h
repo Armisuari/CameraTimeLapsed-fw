@@ -24,8 +24,8 @@ private:
     bool trigstat = false;
     uint32_t _trigEpoch;
 
-    int startHour = 0;
-    int stopHour = 1;
+    int startHour = 8;
+    int stopHour = 17;
     uint32_t interval;
     uint32_t numCapture = 240;
 };

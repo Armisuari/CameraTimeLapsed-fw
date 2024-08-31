@@ -11,7 +11,7 @@
 class Serial_Raspi : public SerialInterface
 {
 public:
-    Serial_Raspi(int baudRate = 115200, SerialConfig sc = SerialConfig::SERIAL_8N1, int rx = 16, int tx = 17);
+    Serial_Raspi(int baudRate = 115200, SerialConfig sc = SerialConfig::SERIAL_8N1, int rx = 20, int tx = 21);
     bool begin();
     bool sendComm(std::string _msg);
     void setCallback(SerialCallback callback);
