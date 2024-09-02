@@ -7,6 +7,7 @@
 
 #include <esp32/driver/Serial_Raspi.h>
 #include <esp32/driver/Storage_LittleFS.h>
+#include <esp32/driver/Switch_Mosfet.h>
 #ifndef DEBUG_ONLY_ESP
 #include <esp32/driver/Time_DS3231.h>
 Time_DS3231 ds3231;
@@ -17,11 +18,13 @@ Time_ntp ntp;
 
 Serial_Raspi raspi;
 Storage_LittleFS lfs;
+Switch_Mosfet camPow(3);
+Switch_Mosfet devPow(4);
 
 #ifndef DEBUG_ONLY_ESP
 PlatformForwarder app(raspi, ds3231);
 #else
-PlatformForwarder app(raspi, ntp, lfs);
+PlatformForwarder app(raspi, ntp, lfs, camPow, devPow);
 #endif
 
 void taskFunc(void *pvParam)
@@ -37,10 +40,6 @@ void taskFunc(void *pvParam)
 void setup()
 {
     Serial.begin(115200);
-    pinMode(3, OUTPUT);
-    pinMode(4, OUTPUT);
-    digitalWrite(3, HIGH);
-    digitalWrite(4, HIGH);
     app.begin();
 
     xTaskCreate(taskFunc, "task", 1024 * 8, NULL, 10, NULL);
@@ -48,5 +47,5 @@ void setup()
 
 void loop()
 {
-    app.deviceHandler();
+    vTaskDelete(NULL);
 }
