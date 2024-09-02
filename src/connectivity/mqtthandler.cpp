@@ -6,6 +6,8 @@ WifiHandler _wifi(CONFIG_MAIN_WIFI_DEFAULT_SSID, CONFIG_MAIN_WIFI_DEFAULT_PASS);
 
 MQTTHandler *MQTTHandler::instance = nullptr; // Initialize the static instance pointer
 
+static const char *TAG = "MqttHandler";
+
 MQTTHandler::MQTTHandler(const char *ssid, const char *password, const char *mqtt_server, int mqtt_port)
     : ssid(ssid), password(password), mqtt_server(mqtt_server), mqtt_port(mqtt_port), client(espClient)
 {
@@ -14,23 +16,30 @@ MQTTHandler::MQTTHandler(const char *ssid, const char *password, const char *mqt
 
 void MQTTHandler::reconnect()
 {
+
     while (!client.connected())
     {
-        Serial.print("Attempting MQTT connection...");
-        clientId += String(random(0xffff), HEX);
-        if (client.connect(clientId.c_str()))
+        if (WiFi.status() == WL_CONNECTED)
         {
-            Serial.println("connected");
-            client.subscribe("reqStream");
-            client.subscribe("angkasaConfig");
-            client.subscribe("angkasa/deviceSetConfig");
-        }
-        else
-        {
-            Serial.print("failed, rc=");
-            Serial.print(client.state());
-            Serial.println(" try again in 5 seconds");
-            delay(5000);
+            Serial.print("Attempting MQTT connection...");
+            clientId += String(random(0xffff), HEX);
+            if (client.connect(clientId.c_str()))
+            {
+                Serial.println("connected");
+                // client.subscribe("angkasa/checkDevice");
+                client.subscribe("reqStream");
+                client.subscribe("angkasaConfig");
+                client.subscribe("angkasa/deviceSetConfig");
+
+                client.publish("angkasa/checkDevice", "Device Ready !");
+            }
+            else
+            {
+                Serial.print("failed, rc=");
+                Serial.print(client.state());
+                Serial.println(" try again in 5 seconds");
+                delay(5000);
+            }
         }
     }
 }
@@ -45,48 +54,28 @@ void MQTTHandler::callback(char *topic, byte *payload, unsigned int length)
 
 void MQTTHandler::handleCallback(char *topic, byte *payload, unsigned int length)
 {
-    Serial.print("Message arrived [");
-    Serial.print(topic);
-    Serial.print("] ");
-    for (int i = 0; i < length; i++)
-    {
-        Serial.print((char)payload[i]);
-    }
-    Serial.println();
+    Serial.printf("Message arrived [%s] ", topic);
 
-    _message = "";
+    _message = std::string((char *)payload, length);
 
-    // Convert payload to string
-    for (int i = 0; i < length; i++)
-    {
-        _message += (char)payload[i];
-    }
+    Serial.println(_message.c_str());
 }
 
 bool MQTTHandler::processMessage(std::string &message)
 {
-
-    if (_message == "")
+    static bool _loggedEmptyMessage = false;
+    if (_message.empty())
     {
+        if (!_loggedEmptyMessage) // Check if the empty log has already been printed
+        {
+            log_e("_message is empty");
+            _loggedEmptyMessage = true; // Set the flag to prevent repeated logs
+        }
         return false;
     }
 
-    if (_message == "{\"reqConfig\" : 1}")
-    {
-        message = _message;
-        _message = "";
-        return false;
-    }
-
-    // Check if command is about changing config
-    if (_message.find("Shutter") != std::string::npos)
-    {
-        log_i("parsing config json..");
-        handleConfig(_message.c_str(), _message.length());
-    }
-
-    message = _message;
-    _message = "";
+    message = std::move(_message);
+    _message.clear();
 
     return true;
 }
@@ -368,11 +357,11 @@ void MQTTHandler::init()
     xTaskCreate(taskFunc, "taskFunc", 1024 * 4, this, 1, NULL);
 }
 
-bool MQTTHandler::publish(std::string message)
+bool MQTTHandler::publish(std::string topic, std::string message)
 {
     if (WiFi.status() != WL_CONNECTED)
     {
-        log_w("waiting wifi connection");
+        ESP_LOGW(TAG, "waiting wifi connection");
         client.disconnect();
 
         while (WiFi.status() != WL_CONNECTED)
@@ -382,20 +371,24 @@ bool MQTTHandler::publish(std::string message)
     }
     else if (WiFi.status() == WL_CONNECTED && !client.connected())
     {
-        log_i("connectiong to platform...");
+        ESP_LOGD(TAG, "connectiong to platform...");
         if (!client.connect(clientId.c_str()))
         {
-            log_e("failed to connect to platform !");
+            ESP_LOGE(TAG, "failed to connect to platform !");
             return false;
         }
     }
 
-    bool res = client.publish("angkasa/settings", message.c_str());
+    bool res = client.publish(topic.c_str(), message.c_str());
 
     if (!res)
     {
-        log_e("Failed to publish message");
+        ESP_LOGE(TAG, "Failed to publish message");
         return false;
+    }
+    else
+    {
+        ESP_LOGD(TAG, "Succed to publish message : %s", message.c_str());
     }
 
     return true;

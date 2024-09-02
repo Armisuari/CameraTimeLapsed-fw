@@ -16,7 +16,7 @@ public:
     MQTTHandler(const char *ssid, const char *password, const char *mqtt_server, int mqtt_port);
     void init();
     bool processMessage(std::string &message);
-    bool publish(std::string message);
+    bool publish(std::string topic, std::string message);
     bool isScheduleEnabled();
 
 private:
