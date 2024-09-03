@@ -63,11 +63,6 @@ bool PlatformForwarder::deviceHandler()
 
     log_d("Receiving command: %s", msgCommand.c_str());
 
-    // if (!enqueueMessage(msgCommand))
-    // {
-    //     return false;
-    // }
-
     if (!processJsonCommand(msgCommand))
     {
         return false;
@@ -223,11 +218,6 @@ void PlatformForwarder::callback(std::string msg)
         log_e("device turned off");
         xEventGroupClearBits(_eventGroup, EVT_DEVICE_ON);
         xEventGroupSetBits(_eventGroup, EVT_DEVICE_OFF);
-        // if (_checkDeviceTimer != NULL)
-        // {
-        //     log_d("stop check timer");
-        //     xTimerStop(_checkDeviceTimer, 0);
-        // }
         xEventGroupSetBits(_eventGroup, EVT_DEVICE_READY);
     }
     else if (msg == "captured")
@@ -288,14 +278,6 @@ void PlatformForwarder::callback(std::string msg)
 
     std::string _msgCommand = instance->msgCommand;
     log_i("send command callback triggered: %s", _msgCommand.c_str());
-
-    // if (_msgCommand == "{\"stream\" : 0}")
-    // {
-    //     log_w("canceling live stream");
-    //     // xTimerDelete(_checkDeviceTimer, 0);
-    //     xEventGroupSetBits(_eventGroup, EVT_DEVICE_READY);
-    //     return;
-    // }
 
     instance->_device.sendComm(_msgCommand);
 
