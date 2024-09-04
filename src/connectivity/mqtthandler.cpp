@@ -74,6 +74,13 @@ bool MQTTHandler::processMessage(std::string &message)
         return false;
     }
 
+    // Check if command is about changing config
+    if (_message.find("Shutter") != std::string::npos)
+    {
+        log_i("parsing config json..");
+        handleConfig(_message.c_str(), _message.length());
+    }
+
     message = std::move(_message);
     _message.clear();
 
