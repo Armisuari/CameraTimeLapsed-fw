@@ -5,6 +5,11 @@ CaptureScheduleHandler::CaptureScheduleHandler(TimeInterface &time)
 {
 }
 
+CaptureScheduleHandler::~CaptureScheduleHandler()
+{
+    delete this;
+}
+
 bool CaptureScheduleHandler::begin()
 {
     // Calculate the interval in seconds (240 intervals in total)
@@ -44,12 +49,12 @@ bool CaptureScheduleHandler::trigCapture(bool enable)
         bool isTimeRange = timeNow >= startTime && timeNow < stopTime;
 
         static uint64_t lastPrint;
-        if (millis() - lastPrint >= 1000U)
+        if (millis() - lastPrint >= 10000U)
         {
             lastPrint = millis();
-            log_i("Current time: %s", _time.getTimeStamp().c_str());
-            log_i("timeNow:%i startTime:%i stopTime:%i", timeNow, startTime, stopTime);
-            log_i("is the current time is within the range ? : %s", isTimeRange ? "yes" : "no");
+            log_d("Current time: %s", _time.getTimeStamp().c_str());
+            log_d("timeNow:%i startTime:%i stopTime:%i", timeNow, startTime, stopTime);
+            log_d("is the current time is within the range ? : %s", isTimeRange ? "yes" : "no");
         }
 
         // Check if the current time is within the start and stop time range
@@ -61,17 +66,18 @@ bool CaptureScheduleHandler::trigCapture(bool enable)
                 trigstat = true;
             }
             static uint64_t lastPrint;
-            if (millis() - lastPrint >= 1000U)
+            if (millis() - lastPrint >= 10000U)
             {
                 lastPrint = millis();
-                log_i("Current epoch time: %u", timeNow);
-                log_i("Next trigger epoch time: %u", _trigEpoch);
+                log_d("Current epoch time: %u", timeNow);
+                log_d("Next trigger epoch time: %u\n", _trigEpoch);
+                log_w("number of captured : %d", captureCount);
             }
             if (timeNow >= _trigEpoch)
             {
                 static int count;
                 count += 1;
-                log_i("Capture Trigger : %d\n", count);
+                log_d("Capture Trigger : %d\n", count);
                 if (count >= numCapture)
                     count = 0;
                 _trigEpoch = timeNow + interval;
