@@ -27,22 +27,10 @@ PlatformForwarder app(raspi, ds3231);
 PlatformForwarder app(raspi, ntp, lfs, camPow, devPow);
 #endif
 
-// void taskFunc(void *pvParam)
-// {
-//     while (true)
-//     {
-//         app.deviceHandler();
-//         delay(10);
-//     }
-//     vTaskDelete(NULL);
-// }
-
 void setup()
 {
     Serial.begin(115200);
     app.begin();
-
-    // xTaskCreate(taskFunc, "task", 1024 * 8, NULL, 10, NULL);
 }
 
 void loop()
