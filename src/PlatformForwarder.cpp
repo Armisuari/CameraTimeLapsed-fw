@@ -73,17 +73,16 @@ bool PlatformForwarder::begin()
     }
 
     // Initialize Watchdog Timer
-    log_i("Initialize Watchdog Timer");
-    esp_task_wdt_init(WDT_TIMEOUT, true); // Enable panic so ESP32 restarts
-    esp_task_wdt_add(captureSchedulerTaskHandle);             // Add current thread to WDT
-    esp_task_wdt_add(deviceHandlerTaskHandle);               // Add current thread to WDT
+    // log_i("Initialize Watchdog Timer");
+    // esp_task_wdt_init(WDT_TIMEOUT, true); // Enable panic so ESP32 restarts
+    // esp_task_wdt_add(captureSchedulerTaskHandle);             // Add current thread to WDT
+    // esp_task_wdt_add(deviceHandlerTaskHandle);               // Add current thread to WDT
 
     return true;
 }
 
 bool PlatformForwarder::deviceHandler()
 {
-
     receiveCommand = _mqtt.processMessage(msgCommand);
 
     if (!msgCommand.empty())
@@ -199,8 +198,6 @@ void PlatformForwarder::handleDevicePower()
     }
 
     xEventGroupWaitBits(_eventGroup, EVT_DEVICE_READY, pdTRUE, pdFALSE, portMAX_DELAY);
-    log_w("Device is ready!");
-    _mqtt.publish("angkasa/checkDevice", "{\"deviceReady\": 1}");
 }
 
 bool PlatformForwarder::startCheckDeviceTimer()
@@ -334,6 +331,8 @@ void PlatformForwarder::callback(std::string msg)
         log_w("ble_connected at %d times", countBle);
         countBle = 0;
         xEventGroupSetBits(_eventGroup, EVT_DEVICE_READY);
+        log_w("Device is ready!");
+        instance->_mqtt.publish("angkasa/checkDevice", "{\"deviceReady\": 1}");
     }
     else if (msg == "ble disconnected")
     {
