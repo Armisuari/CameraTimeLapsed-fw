@@ -160,13 +160,13 @@ bool PlatformForwarder::processJsonCommand(const std::string &msgCommand)
     }
     else if (doc["stream"] == 1)
     {
-        log_e("suspend capture scheduler");
-        vTaskSuspend(captureSchedulerTaskHandle);
-        if (uxBits & EVT_LIVE_STREAM)
-        {
-            log_d("block command, already live stream");
-            return false;
-        }
+        // log_e("suspend capture scheduler");
+        // vTaskSuspend(captureSchedulerTaskHandle);
+        // if (uxBits & EVT_LIVE_STREAM)
+        // {
+        //     log_d("block command, already live stream");
+        //     return false;
+        // }
     }
     else if (doc["stream"] == 0)
     {
@@ -390,4 +390,22 @@ void PlatformForwarder::callback(std::string msg)
         log_w("re-boot device...");
         instance->_devPow.oneCycleOn();
     }
+}
+
+bool PlatformForwarder::liveStream()
+{
+    log_e("suspend other task");
+    vTaskSuspend(captureSchedulerTaskHandle);
+
+    EventBits_t uxBits = xEventGroupGetBits(_eventGroup);
+    if (uxBits & EVT_LIVE_STREAM)
+    {
+        log_d("block command, already live stream");
+        return false;
+    }
+
+    bool res = _device.sendComm(msgCommand);
+    msgCommand.clear();
+
+    return res;
 }
