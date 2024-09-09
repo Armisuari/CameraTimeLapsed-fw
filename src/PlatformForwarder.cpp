@@ -30,7 +30,7 @@ bool PlatformForwarder::begin()
 
     log_i("turn on camera");
     _camPow.on();
-    _devPow.off();
+    _devPow.on();
 
     _eventGroup = xEventGroupCreate();
     xEventGroupSetBits(_eventGroup, EVT_DEVICE_OFF);
@@ -152,6 +152,8 @@ bool PlatformForwarder::processJsonCommand(const std::string &msgCommand)
     }
     else if (msgCommand.find("shu") != std::string::npos)
     {
+        log_e("suspend capture scheduler");
+        vTaskSuspend(captureSchedulerTaskHandle);
         if (uxBits & EVT_LIVE_STREAM)
         {
             log_d("block command due to live stream session");
@@ -177,6 +179,10 @@ bool PlatformForwarder::processJsonCommand(const std::string &msgCommand)
             log_d("block command, already not live stream");
             return false;
         }
+    }
+    else if (msgCommand.find("esp_restart") != std::string::npos)
+    {
+        esp_restart();
     }
 
     log_d("writing last command to fs");
@@ -302,6 +308,8 @@ void PlatformForwarder::callback(std::string msg)
         xEventGroupSetBits(_eventGroup, EVT_DEVICE_READY);
         xEventGroupSetBits(_eventGroup, EVT_COMMAND_REC);
         instance->_storage.deleteFileLastCommand();
+        log_w("resume capture scheduler");
+        vTaskResume(captureSchedulerTaskHandle);
     }
     else if (msg == "streamStart")
     {
