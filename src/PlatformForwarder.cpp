@@ -14,6 +14,7 @@ PlatformForwarder *PlatformForwarder::instance = nullptr;
 /* STATIC */ QueueHandle_t PlatformForwarder::_msgQueue = NULL;
 /* STATIC */ TaskHandle_t PlatformForwarder::captureSchedulerTaskHandle = NULL;
 /* STATIC */ TaskHandle_t PlatformForwarder::deviceHandlerTaskHandle = NULL;
+/* STATIC */ TaskHandle_t PlatformForwarder::heartbeatTaskHandle = NULL;
 /* STATIC */ TaskHandle_t PlatformForwarder::systemResetTaskHandle = NULL;
 
 PlatformForwarder::PlatformForwarder(SerialInterface &device, TimeInterface &time, StorageInterface &storage, SwitchPowerInterface &camPow, SwitchPowerInterface &devPow)
@@ -58,6 +59,7 @@ bool PlatformForwarder::begin()
 
     xTaskCreate(&PlatformForwarder::captureSchedulerTask, " capture scheduler task", 1024 * 4, this, 3, &captureSchedulerTaskHandle);
     xTaskCreate(&PlatformForwarder::deviceHandlerTask, " device handler task", 1024 * 4, this, 10, &deviceHandlerTaskHandle);
+    xTaskCreate(&PlatformForwarder::heartbeatTask, " heartbeat task", 1024 * 8, this, 5, &heartbeatTaskHandle);
     xTaskCreate(&PlatformForwarder::systemResetTask, " system reset task", 1024 * 8, this, 15, &systemResetTaskHandle);
 
     delay(2000);
@@ -397,6 +399,68 @@ void PlatformForwarder::callback(std::string msg)
         instance->_devPow.oneCycleOn();
     }
 }
+
+void PlatformForwarder::heartbeatTask(void *pvParameter)
+{
+    static uint64_t lastHeartbeat = 0;
+    uint16_t interval = 5000;
+    while (true)
+    {
+        EventBits_t uxBits = xEventGroupGetBits(_eventGroup);
+
+        std::string currentEvent;
+
+        if (uxBits & EVT_DEVICE_OFF)
+        {
+            currentEvent += "Device is OFF";
+        }
+        if (uxBits & EVT_DEVICE_ON)
+        {
+            currentEvent += "Device is ON";
+        }
+        if (uxBits & EVT_DEVICE_READY)
+        {
+            currentEvent += ", READY";
+        }
+        else if (!(uxBits & EVT_DEVICE_READY))
+        {
+            currentEvent += ", NOT READY";
+        }
+        if (uxBits & EVT_COMMAND_REC)
+        {
+            currentEvent += ", all command RECEIVED";
+        }
+        else if (!(uxBits & EVT_COMMAND_REC))
+        {
+            currentEvent += ", command NOT RECEIVED=>";
+            currentEvent += instance->msgCommand;
+        }
+        if (uxBits & EVT_LIVE_STREAM)
+        {
+            currentEvent += ", STREAMING";
+        }
+        if (uxBits & EVT_CAPTURE_SCHED)
+        {
+            currentEvent += ", capSchedule is ON";
+        }
+        if (uxBits & EVT_DEVICE_REBOOT)
+        {
+            currentEvent += ", REBOOT";
+        }
+
+        if (millis() - lastHeartbeat >= interval)
+        {
+            uint16_t totalCaptured = instance->capScheduler->captureCount;
+            // std::string currentEvent = instance->lastCommand;
+            std::string timestamp = instance->_time.getTimeStamp();
+            instance->_mqtt.publish("angkasa/heartbeat",
+                                    "{\"time\":\"" + timestamp + "\", \"event\":\"" + currentEvent + "\", \"captured\":" + std::to_string(totalCaptured) + "}");
+            lastHeartbeat = millis();
+        }
+        delay(1);
+    }
+}
+
 void PlatformForwarder::systemResetTask(void *pvParameter)
 {
     while (true)
