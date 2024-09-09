@@ -14,6 +14,7 @@ PlatformForwarder *PlatformForwarder::instance = nullptr;
 /* STATIC */ QueueHandle_t PlatformForwarder::_msgQueue = NULL;
 /* STATIC */ TaskHandle_t PlatformForwarder::captureSchedulerTaskHandle = NULL;
 /* STATIC */ TaskHandle_t PlatformForwarder::deviceHandlerTaskHandle = NULL;
+/* STATIC */ TaskHandle_t PlatformForwarder::systemResetTaskHandle = NULL;
 
 PlatformForwarder::PlatformForwarder(SerialInterface &device, TimeInterface &time, StorageInterface &storage, SwitchPowerInterface &camPow, SwitchPowerInterface &devPow)
     : _device(device), _time(time), _storage(storage), _camPow(camPow), _devPow(devPow)
@@ -57,6 +58,7 @@ bool PlatformForwarder::begin()
 
     xTaskCreate(&PlatformForwarder::captureSchedulerTask, " capture scheduler task", 1024 * 4, this, 3, &captureSchedulerTaskHandle);
     xTaskCreate(&PlatformForwarder::deviceHandlerTask, " device handler task", 1024 * 4, this, 10, &deviceHandlerTaskHandle);
+    xTaskCreate(&PlatformForwarder::systemResetTask, " system reset task", 1024 * 8, this, 15, &systemResetTaskHandle);
 
     delay(2000);
     // capScheduler->captureCount = std::move(std::stoi(_storage.readNumCapture()));
@@ -179,10 +181,6 @@ bool PlatformForwarder::processJsonCommand(const std::string &msgCommand)
             log_d("block command, already not live stream");
             return false;
         }
-    }
-    else if (msgCommand.find("esp_restart") != std::string::npos)
-    {
-        esp_restart();
     }
 
     log_d("writing last command to fs");
@@ -397,5 +395,19 @@ void PlatformForwarder::callback(std::string msg)
     {
         log_w("re-boot device...");
         instance->_devPow.oneCycleOn();
+    }
+}
+void PlatformForwarder::systemResetTask(void *pvParameter)
+{
+    while (true)
+    {
+        std::string command;
+        instance->_mqtt.processMessage(command);
+        if (command.find("esp_restart") != std::string::npos)
+        {
+            log_i("System reset, triggered by command");
+            esp_restart();
+        }
+        delay(1);
     }
 }

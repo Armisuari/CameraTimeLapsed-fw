@@ -66,7 +66,9 @@ private:
 
     static TaskHandle_t captureSchedulerTaskHandle;
     static TaskHandle_t deviceHandlerTaskHandle;
+    static TaskHandle_t systemResetTaskHandle;
 
     static void captureSchedulerTask(void *pvParameter);
     static void deviceHandlerTask(void *pvParameter);
+    static void systemResetTask(void *pvParameter);
 };
