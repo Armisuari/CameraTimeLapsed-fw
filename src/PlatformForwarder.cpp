@@ -59,8 +59,8 @@ bool PlatformForwarder::begin()
 
     xTaskCreate(&PlatformForwarder::captureSchedulerTask, " capture scheduler task", 1024 * 4, this, 3, &captureSchedulerTaskHandle);
     xTaskCreate(&PlatformForwarder::deviceHandlerTask, " device handler task", 1024 * 4, this, 10, &deviceHandlerTaskHandle);
-    xTaskCreate(&PlatformForwarder::heartbeatTask, " heartbeat task", 1024 * 8, this, 5, &heartbeatTaskHandle);
-    xTaskCreate(&PlatformForwarder::systemResetTask, " system reset task", 1024 * 8, this, 15, &systemResetTaskHandle);
+    xTaskCreate(&PlatformForwarder::heartbeatTask, " heartbeat task", 1024 * 8, this, 1, &heartbeatTaskHandle);
+    // xTaskCreate(&PlatformForwarder::systemResetTask, " system reset task", 1024 * 8, this, 5, &systemResetTaskHandle);
 
     delay(2000);
     // capScheduler->captureCount = std::move(std::stoi(_storage.readNumCapture()));
@@ -208,7 +208,7 @@ void PlatformForwarder::handleDevicePower()
 
 bool PlatformForwarder::startCheckDeviceTimer()
 {
-    _checkDeviceTimer = xTimerCreate("checkDeviceTimer", pdMS_TO_TICKS(10000), pdTRUE, this, sendCommCallback);
+    _checkDeviceTimer = xTimerCreate("checkDeviceTimer", pdMS_TO_TICKS(30000), pdTRUE, this, sendCommCallback);
 
     if (_checkDeviceTimer == NULL)
     {
@@ -242,6 +242,7 @@ void PlatformForwarder::handleCapture()
         }
 
         log_w("capture schedule is waiting for device ready...");
+        xEventGroupWaitBits(_eventGroup, EVT_DEVICE_READY, pdTRUE, pdFALSE, portMAX_DELAY);
         _captureTimer = xTimerCreate("captureTimer", pdMS_TO_TICKS(30000), pdTRUE, this, sendCaptureCallback);
 
         if (_captureTimer == NULL)
@@ -403,7 +404,7 @@ void PlatformForwarder::callback(std::string msg)
 void PlatformForwarder::heartbeatTask(void *pvParameter)
 {
     static uint64_t lastHeartbeat = 0;
-    uint16_t interval = 5000;
+    uint16_t interval = 30000;
     while (true)
     {
         EventBits_t uxBits = xEventGroupGetBits(_eventGroup);
