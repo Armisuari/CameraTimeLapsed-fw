@@ -107,7 +107,7 @@ bool PlatformForwarder::deviceHandler()
     }
 
     handleDevicePower();
-
+    _device.sendComm(msgCommand);
     if (!startCheckDeviceTimer())
     {
         return false;
@@ -199,8 +199,8 @@ void PlatformForwarder::handleDevicePower()
     {
         log_w("Turning on device");
         _devPow.oneCycleOn();
-        xEventGroupClearBits(_eventGroup, EVT_DEVICE_OFF);
-        xEventGroupSetBits(_eventGroup, EVT_DEVICE_ON);
+        // xEventGroupClearBits(_eventGroup, EVT_DEVICE_OFF);
+        // xEventGroupSetBits(_eventGroup, EVT_DEVICE_ON);
     }
 
     xEventGroupWaitBits(_eventGroup, EVT_DEVICE_READY, pdTRUE, pdFALSE, portMAX_DELAY);
@@ -242,7 +242,6 @@ void PlatformForwarder::handleCapture()
         }
 
         log_w("capture schedule is waiting for device ready...");
-        xEventGroupWaitBits(_eventGroup, EVT_DEVICE_READY, pdTRUE, pdFALSE, portMAX_DELAY);
         _captureTimer = xTimerCreate("captureTimer", pdMS_TO_TICKS(30000), pdTRUE, this, sendCaptureCallback);
 
         if (_captureTimer == NULL)
@@ -392,12 +391,26 @@ void PlatformForwarder::callback(std::string msg)
 
 /*STATIC*/ void PlatformForwarder::sendCaptureCallback(TimerHandle_t xTimer)
 {
-    log_d("capture timer callback start");
+    static int camHardRes;
+    camHardRes += 1;
+    log_d("capture timer callback start for = %d", camHardRes);
     EventBits_t uxBits = xEventGroupGetBits(_eventGroup);
     if (uxBits & EVT_DEVICE_OFF)
     {
         log_w("re-boot device...");
-        instance->_devPow.oneCycleOn();
+        // instance->_devPow.oneCycleOn();
+    }
+
+    instance->_device.sendComm("{\"capture\":1}");
+
+    if (!(uxBits & EVT_DEVICE_READY))
+    {
+        if (camHardRes >= 10)
+        {
+            log_e("camera not response for 5 minutes. hard resetting...");
+            instance->_camPow.oneCycleOn();
+            camHardRes = 0;
+        }
     }
 }
 
@@ -411,54 +424,77 @@ void PlatformForwarder::heartbeatTask(void *pvParameter)
 
         std::string currentEvent;
 
+        // if (uxBits & EVT_DEVICE_OFF)
+        // {
+        //     currentEvent += "Device is OFF";
+        // }
+        // if (uxBits & EVT_DEVICE_ON)
+        // {
+        //     currentEvent += "Device is ON";
+        // }
+        // if (uxBits & EVT_DEVICE_READY)
+        // {
+        //     currentEvent += ", READY";
+        // }
+        // else if (!(uxBits & EVT_DEVICE_READY))
+        // {
+        //     currentEvent += ", NOT READY";
+        // }
+        // if (uxBits & EVT_COMMAND_REC)
+        // {
+        //     currentEvent += ", all command RECEIVED";
+        // }
+        // else if (!(uxBits & EVT_COMMAND_REC))
+        // {
+        //     currentEvent += ", command NOT RECEIVED=>";
+        //     currentEvent += instance->msgCommand;
+        // }
+        // if (uxBits & EVT_LIVE_STREAM)
+        // {
+        //     currentEvent += ", STREAMING";
+        // }
+        // if (uxBits & EVT_CAPTURE_SCHED)
+        // {
+        //     currentEvent += ", capSchedule is ON";
+        // }
+        // if (uxBits & EVT_DEVICE_REBOOT)
+        // {
+        //     currentEvent += ", REBOOT";
+        // }
+
+        // if (millis() - lastHeartbeat >= interval)
+        // {
+        //     uint16_t totalCaptured = instance->capScheduler->captureCount;
+        //     // std::string currentEvent = instance->lastCommand;
+        //     std::string timestamp = instance->_time.getTimeStamp();
+        //     instance->_mqtt.publish("angkasa/heartbeat",
+        //                             "{\"time\":\"" + timestamp + "\", \"event\":\"" + currentEvent + "\", \"captured\":" + std::to_string(totalCaptured) + "}");
+        //     lastHeartbeat = millis();
+        // }
+
         if (uxBits & EVT_DEVICE_OFF)
         {
-            currentEvent += "Device is OFF";
+            currentEvent = "raspi off";
         }
-        if (uxBits & EVT_DEVICE_ON)
+        else if (uxBits & EVT_DEVICE_ON)
         {
-            currentEvent += "Device is ON";
+            currentEvent = "raspi on";
         }
-        if (uxBits & EVT_DEVICE_READY)
+        else if (uxBits & EVT_DEVICE_READY)
         {
-            currentEvent += ", READY";
+            currentEvent = "raspi connected to camera";
         }
-        else if (!(uxBits & EVT_DEVICE_READY))
+        else if (uxBits & EVT_COMMAND_REC)
         {
-            currentEvent += ", NOT READY";
+            currentEvent = "raspi receive command";
         }
-        if (uxBits & EVT_COMMAND_REC)
+        else if (uxBits & EVT_LIVE_STREAM)
         {
-            currentEvent += ", all command RECEIVED";
-        }
-        else if (!(uxBits & EVT_COMMAND_REC))
-        {
-            currentEvent += ", command NOT RECEIVED=>";
-            currentEvent += instance->msgCommand;
-        }
-        if (uxBits & EVT_LIVE_STREAM)
-        {
-            currentEvent += ", STREAMING";
-        }
-        if (uxBits & EVT_CAPTURE_SCHED)
-        {
-            currentEvent += ", capSchedule is ON";
-        }
-        if (uxBits & EVT_DEVICE_REBOOT)
-        {
-            currentEvent += ", REBOOT";
+            currentEvent = "camera live stream";
         }
 
-        if (millis() - lastHeartbeat >= interval)
-        {
-            uint16_t totalCaptured = instance->capScheduler->captureCount;
-            // std::string currentEvent = instance->lastCommand;
-            std::string timestamp = instance->_time.getTimeStamp();
-            instance->_mqtt.publish("angkasa/heartbeat",
-                                    "{\"time\":\"" + timestamp + "\", \"event\":\"" + currentEvent + "\", \"captured\":" + std::to_string(totalCaptured) + "}");
-            lastHeartbeat = millis();
-        }
-        delay(1);
+        log_i("current event = %s", currentEvent.c_str());
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
 }
 
