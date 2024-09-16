@@ -158,11 +158,11 @@ bool PlatformForwarder::processJsonCommand(const std::string &msgCommand)
     {
         log_e("suspend capture scheduler");
         vTaskSuspend(captureSchedulerTaskHandle);
-        if (uxBits & EVT_LIVE_STREAM)
-        {
-            log_d("block command due to live stream session");
-            return false;
-        }
+        // if (uxBits & EVT_LIVE_STREAM)
+        // {
+        //     log_d("block command due to live stream session");
+        //     return false;
+        // }
     }
     else if (doc["stream"] == 1)
     {
