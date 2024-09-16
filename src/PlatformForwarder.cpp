@@ -102,6 +102,7 @@ bool PlatformForwarder::deviceHandler()
 
     if (!processJsonCommand(msgCommand))
     {
+        log_e("failed to process Json Command");
         msgCommand.clear();
         return false;
     }
