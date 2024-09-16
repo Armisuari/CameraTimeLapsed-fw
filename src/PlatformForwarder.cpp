@@ -108,6 +108,7 @@ bool PlatformForwarder::deviceHandler()
     }
 
     handleDevicePower();
+    log_d("send command to device");
     _device.sendComm(msgCommand);
     if (!startCheckDeviceTimer())
     {
