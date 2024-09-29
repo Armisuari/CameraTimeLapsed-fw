@@ -64,6 +64,9 @@ private:
     bool startCheckDeviceTimer();
     void handleCapture();
 
+    void resumeCaptureSchedule();
+    void suspendCaptureSchedule();
+
     static TaskHandle_t captureSchedulerTaskHandle;
     static TaskHandle_t deviceHandlerTaskHandle;
     static TaskHandle_t heartbeatTaskHandle;
@@ -72,7 +75,7 @@ private:
 
     static void captureSchedulerTask(void *pvParameter);
     static void deviceHandlerTask(void *pvParameter);
-    static void heartbeatTask(void *pvParameter);
-    static void systemResetTask(void *pvParameter);
-    static void mqttListenerTask(void *pvParameter);
+    // static void heartbeatTask(void *pvParameter);
+    // static void systemResetTask(void *pvParameter);
+    // static void mqttListenerTask(void *pvParameter);
 };

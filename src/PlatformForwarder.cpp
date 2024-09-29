@@ -61,8 +61,8 @@ bool PlatformForwarder::begin()
     xTaskCreate(&PlatformForwarder::captureSchedulerTask, " capture scheduler task", 1024 * 4, this, 3, &captureSchedulerTaskHandle);
     xTaskCreate(&PlatformForwarder::deviceHandlerTask, " device handler task", 1024 * 4, this, 10, &deviceHandlerTaskHandle);
     // xTaskCreate(&PlatformForwarder::heartbeatTask, " heartbeat task", 1024 * 8, this, 1, &heartbeatTaskHandle);
-    xTaskCreate(&PlatformForwarder::systemResetTask, " system reset task", 1024 * 8, this, 15, &systemResetTaskHandle);
-    xTaskCreate(&PlatformForwarder::mqttListenerTask, " mqtt listener task", 1024 * 4, this, 2, &mqttListenerTaskHandle);
+    // xTaskCreate(&PlatformForwarder::systemResetTask, " system reset task", 1024 * 8, this, 15, &systemResetTaskHandle);
+    // xTaskCreate(&PlatformForwarder::mqttListenerTask, " mqtt listener task", 1024 * 4, this, 2, &mqttListenerTaskHandle);
 
     delay(2000);
     // capScheduler->captureCount = std::move(std::stoi(_storage.readNumCapture()));
@@ -89,7 +89,7 @@ bool PlatformForwarder::begin()
 
 bool PlatformForwarder::deviceHandler()
 {
-    // receiveCommand = _mqtt.processMessage(msgCommand);
+    receiveCommand = _mqtt.processMessage(msgCommand);
 
     if (!msgCommand.empty())
     {
@@ -160,18 +160,15 @@ bool PlatformForwarder::processJsonCommand(const std::string &msgCommand)
     }
     else if (msgCommand.find("shu") != std::string::npos)
     {
-        log_e("suspend capture scheduler");
-        vTaskSuspend(captureSchedulerTaskHandle);
-        // if (uxBits & EVT_LIVE_STREAM)
-        // {
-        //     log_d("block command due to live stream session");
-        //     return false;
-        // }
+        // log_e("suspend capture scheduler");
+        // vTaskSuspend(captureSchedulerTaskHandle);
+        suspendCaptureSchedule();
     }
     else if (doc["stream"] == 1)
     {
-        log_e("suspend capture scheduler");
-        vTaskSuspend(captureSchedulerTaskHandle);
+        // log_e("suspend capture scheduler");
+        // vTaskSuspend(captureSchedulerTaskHandle);
+        suspendCaptureSchedule();
         if (uxBits & EVT_LIVE_STREAM)
         {
             log_d("block command, already live stream");
@@ -180,15 +177,13 @@ bool PlatformForwarder::processJsonCommand(const std::string &msgCommand)
     }
     else if (doc["stream"] == 0)
     {
-        log_w("resume capture scheduler");
-        vTaskResume(captureSchedulerTaskHandle);
         if (!(uxBits & EVT_LIVE_STREAM))
         {
             log_d("block command, already not live stream");
             return false;
         }
     }
-    else if (msgCommand.find("esp_restart") != std::string::npos)
+    else if (msgCommand.find("restart") != std::string::npos)
     {
         log_i("System reset, triggered by command");
         esp_restart();
@@ -213,12 +208,17 @@ void PlatformForwarder::handleDevicePower()
         // xEventGroupSetBits(_eventGroup, EVT_DEVICE_ON);
     }
 
+    if (uxBits & EVT_DEVICE_READY)
+    {
+        return;
+    }
+
     xEventGroupWaitBits(_eventGroup, EVT_DEVICE_READY, pdTRUE, pdFALSE, portMAX_DELAY);
 }
 
 bool PlatformForwarder::startCheckDeviceTimer()
 {
-    _checkDeviceTimer = xTimerCreate("checkDeviceTimer", pdMS_TO_TICKS(30000), pdTRUE, this, sendCommCallback);
+    _checkDeviceTimer = xTimerCreate("checkDeviceTimer", pdMS_TO_TICKS(10000), pdTRUE, this, sendCommCallback);
 
     if (_checkDeviceTimer == NULL)
     {
@@ -318,8 +318,7 @@ void PlatformForwarder::callback(std::string msg)
         xEventGroupSetBits(_eventGroup, EVT_DEVICE_READY);
         xEventGroupSetBits(_eventGroup, EVT_COMMAND_REC);
         instance->_storage.deleteFileLastCommand();
-        log_w("resume capture scheduler");
-        vTaskResume(captureSchedulerTaskHandle);
+        instance->resumeCaptureSchedule();
     }
     else if (msg == "streamStart")
     {
@@ -328,7 +327,6 @@ void PlatformForwarder::callback(std::string msg)
         xEventGroupSetBits(_eventGroup, EVT_COMMAND_REC);
         xEventGroupSetBits(_eventGroup, EVT_LIVE_STREAM);
         instance->_storage.deleteFileLastCommand();
-        countHardReset = 0;
     }
     else if (msg == "streamStop")
     {
@@ -337,7 +335,7 @@ void PlatformForwarder::callback(std::string msg)
         xEventGroupSetBits(_eventGroup, EVT_COMMAND_REC);
         xEventGroupClearBits(_eventGroup, EVT_LIVE_STREAM);
         instance->_storage.deleteFileLastCommand();
-        countHardReset = 0;
+        instance->resumeCaptureSchedule();
     }
     else if (msg == "streamFailed")
     {
@@ -425,110 +423,131 @@ void PlatformForwarder::callback(std::string msg)
     }
 }
 
-void PlatformForwarder::heartbeatTask(void *pvParameter)
+void PlatformForwarder::resumeCaptureSchedule()
 {
-    static uint64_t lastHeartbeat = 0;
-    uint16_t interval = 30000;
-    while (true)
+    log_w("resume capture scheduler");
+    vTaskResume(captureSchedulerTaskHandle);
+    // if (xTimerStart(_captureTimer, 0) != pdPASS)
+    // {
+    //     log_e("Failed to resume the _captureTimer!");
+    //     return;
+    // }
+}
+
+void PlatformForwarder::suspendCaptureSchedule()
+{
+    log_w("suspend capture scheduler");
+    vTaskSuspend(captureSchedulerTaskHandle);
+    if (_captureTimer != NULL)
     {
-        EventBits_t uxBits = xEventGroupGetBits(_eventGroup);
-
-        std::string currentEvent;
-
-        // if (uxBits & EVT_DEVICE_OFF)
-        // {
-        //     currentEvent += "Device is OFF";
-        // }
-        // if (uxBits & EVT_DEVICE_ON)
-        // {
-        //     currentEvent += "Device is ON";
-        // }
-        // if (uxBits & EVT_DEVICE_READY)
-        // {
-        //     currentEvent += ", READY";
-        // }
-        // else if (!(uxBits & EVT_DEVICE_READY))
-        // {
-        //     currentEvent += ", NOT READY";
-        // }
-        // if (uxBits & EVT_COMMAND_REC)
-        // {
-        //     currentEvent += ", all command RECEIVED";
-        // }
-        // else if (!(uxBits & EVT_COMMAND_REC))
-        // {
-        //     currentEvent += ", command NOT RECEIVED=>";
-        //     currentEvent += instance->msgCommand;
-        // }
-        // if (uxBits & EVT_LIVE_STREAM)
-        // {
-        //     currentEvent += ", STREAMING";
-        // }
-        // if (uxBits & EVT_CAPTURE_SCHED)
-        // {
-        //     currentEvent += ", capSchedule is ON";
-        // }
-        // if (uxBits & EVT_DEVICE_REBOOT)
-        // {
-        //     currentEvent += ", REBOOT";
-        // }
-
-        // if (millis() - lastHeartbeat >= interval)
-        // {
-        //     uint16_t totalCaptured = instance->capScheduler->captureCount;
-        //     // std::string currentEvent = instance->lastCommand;
-        //     std::string timestamp = instance->_time.getTimeStamp();
-        //     instance->_mqtt.publish("angkasa/heartbeat",
-        //                             "{\"time\":\"" + timestamp + "\", \"event\":\"" + currentEvent + "\", \"captured\":" + std::to_string(totalCaptured) + "}");
-        //     lastHeartbeat = millis();
-        // }
-
-        if (uxBits & EVT_DEVICE_OFF)
-        {
-            currentEvent = "raspi off";
-        }
-        else if (uxBits & EVT_DEVICE_ON)
-        {
-            currentEvent = "raspi on";
-        }
-        else if (uxBits & EVT_DEVICE_READY)
-        {
-            currentEvent = "raspi connected to camera";
-        }
-        else if (uxBits & EVT_COMMAND_REC)
-        {
-            currentEvent = "raspi receive command";
-        }
-        else if (uxBits & EVT_LIVE_STREAM)
-        {
-            currentEvent = "camera live stream";
-        }
-
-        log_i("current event = %s", currentEvent.c_str());
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
+        xTimerStop(_captureTimer, 0);
     }
 }
 
-void PlatformForwarder::systemResetTask(void *pvParameter)
-{
-    while (true)
-    {
-        // std::string command;
-        // instance->_mqtt.processMessage(command);
-        if (instance->msgCommand.find("esp_restart") != std::string::npos)
-        {
-            log_i("System reset, triggered by command");
-            esp_restart();
-        }
-        delay(1);
-    }
-}
+// void PlatformForwarder::heartbeatTask(void *pvParameter)
+// {
+//     static uint64_t lastHeartbeat = 0;
+//     uint16_t interval = 30000;
+//     while (true)
+//     {
+//         EventBits_t uxBits = xEventGroupGetBits(_eventGroup);
 
-void PlatformForwarder::mqttListenerTask(void *pvParameter)
-{
-    while (true)
-    {
-        instance->_mqtt.processMessage(instance->msgCommand);
-        delay(1);
-    }
-}
+//         std::string currentEvent;
+
+//         // if (uxBits & EVT_DEVICE_OFF)
+//         // {
+//         //     currentEvent += "Device is OFF";
+//         // }
+//         // if (uxBits & EVT_DEVICE_ON)
+//         // {
+//         //     currentEvent += "Device is ON";
+//         // }
+//         // if (uxBits & EVT_DEVICE_READY)
+//         // {
+//         //     currentEvent += ", READY";
+//         // }
+//         // else if (!(uxBits & EVT_DEVICE_READY))
+//         // {
+//         //     currentEvent += ", NOT READY";
+//         // }
+//         // if (uxBits & EVT_COMMAND_REC)
+//         // {
+//         //     currentEvent += ", all command RECEIVED";
+//         // }
+//         // else if (!(uxBits & EVT_COMMAND_REC))
+//         // {
+//         //     currentEvent += ", command NOT RECEIVED=>";
+//         //     currentEvent += instance->msgCommand;
+//         // }
+//         // if (uxBits & EVT_LIVE_STREAM)
+//         // {
+//         //     currentEvent += ", STREAMING";
+//         // }
+//         // if (uxBits & EVT_CAPTURE_SCHED)
+//         // {
+//         //     currentEvent += ", capSchedule is ON";
+//         // }
+//         // if (uxBits & EVT_DEVICE_REBOOT)
+//         // {
+//         //     currentEvent += ", REBOOT";
+//         // }
+
+//         // if (millis() - lastHeartbeat >= interval)
+//         // {
+//         //     uint16_t totalCaptured = instance->capScheduler->captureCount;
+//         //     // std::string currentEvent = instance->lastCommand;
+//         //     std::string timestamp = instance->_time.getTimeStamp();
+//         //     instance->_mqtt.publish("angkasa/heartbeat",
+//         //                             "{\"time\":\"" + timestamp + "\", \"event\":\"" + currentEvent + "\", \"captured\":" + std::to_string(totalCaptured) + "}");
+//         //     lastHeartbeat = millis();
+//         // }
+
+//         if (uxBits & EVT_DEVICE_OFF)
+//         {
+//             currentEvent = "raspi off";
+//         }
+//         else if (uxBits & EVT_DEVICE_ON)
+//         {
+//             currentEvent = "raspi on";
+//         }
+//         else if (uxBits & EVT_DEVICE_READY)
+//         {
+//             currentEvent = "raspi connected to camera";
+//         }
+//         else if (uxBits & EVT_COMMAND_REC)
+//         {
+//             currentEvent = "raspi receive command";
+//         }
+//         else if (uxBits & EVT_LIVE_STREAM)
+//         {
+//             currentEvent = "camera live stream";
+//         }
+
+//         log_i("current event = %s", currentEvent.c_str());
+//         vTaskDelay(1000 / portTICK_PERIOD_MS);
+//     }
+// }
+
+// void PlatformForwarder::systemResetTask(void *pvParameter)
+// {
+//     while (true)
+//     {
+//         // std::string command;
+//         // instance->_mqtt.processMessage(command);
+//         if (instance->msgCommand.find("esp_restart") != std::string::npos)
+//         {
+//             log_i("System reset, triggered by command");
+//             esp_restart();
+//         }
+//         delay(1);
+//     }
+// }
+
+// void PlatformForwarder::mqttListenerTask(void *pvParameter)
+// {
+//     while (true)
+//     {
+//         instance->_mqtt.processMessage(instance->msgCommand);
+//         delay(1);
+//     }
+// }
