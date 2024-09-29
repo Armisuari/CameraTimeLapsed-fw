@@ -33,7 +33,7 @@ bool PlatformForwarder::begin()
 
     log_i("turn on camera");
     _camPow.on();
-    _devPow.on();
+    _devPow.off();
 
     _eventGroup = xEventGroupCreate();
     xEventGroupSetBits(_eventGroup, EVT_DEVICE_OFF);
@@ -109,6 +109,7 @@ bool PlatformForwarder::deviceHandler()
         return false;
     }
 
+    log_i("waiting for device ready after receive command...");
     handleDevicePower();
     log_d("send command to device");
     _device.sendComm(msgCommand);
@@ -191,8 +192,16 @@ bool PlatformForwarder::processJsonCommand(const std::string &msgCommand)
     }
 
     log_d("writing last command to fs");
-    instance->_storage.writeLastCommand(msgCommand);
+    try
+    {
+        instance->_storage.writeLastCommand(msgCommand);
+    }
+    catch (const std::exception &e)
+    {
+        log_e("error : %s", e.what());
+    }
 
+    log_i("executing command !");
     return true;
 }
 
@@ -404,11 +413,7 @@ void PlatformForwarder::callback(std::string msg)
     camHardRes += 1;
     log_d("capture timer callback start for = %d", camHardRes);
     EventBits_t uxBits = xEventGroupGetBits(_eventGroup);
-    if (uxBits & EVT_DEVICE_OFF)
-    {
-        log_w("re-boot device...");
-        // instance->_devPow.oneCycleOn();
-    }
+
 
     instance->_device.sendComm("{\"capture\":1}");
 
@@ -426,18 +431,30 @@ void PlatformForwarder::callback(std::string msg)
 void PlatformForwarder::resumeCaptureSchedule()
 {
     log_w("resume capture scheduler");
-    vTaskResume(captureSchedulerTaskHandle);
-    // if (xTimerStart(_captureTimer, 0) != pdPASS)
-    // {
-    //     log_e("Failed to resume the _captureTimer!");
-    //     return;
-    // }
+    if (captureSchedulerTaskHandle != NULL)
+    {
+        vTaskResume(captureSchedulerTaskHandle);
+    }
+
+    if (_captureTimer != NULL)
+    {
+        if (xTimerStart(_captureTimer, 0) != pdPASS)
+        {
+            log_e("Failed to resume the _captureTimer!");
+            return;
+        }
+    }
 }
 
 void PlatformForwarder::suspendCaptureSchedule()
 {
     log_w("suspend capture scheduler");
-    vTaskSuspend(captureSchedulerTaskHandle);
+    log_w("let's goo");
+    if (captureSchedulerTaskHandle != NULL)
+    {
+        vTaskSuspend(captureSchedulerTaskHandle);
+    }
+    log_w("after suspend");
     if (_captureTimer != NULL)
     {
         xTimerStop(_captureTimer, 0);
