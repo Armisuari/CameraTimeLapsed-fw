@@ -349,7 +349,7 @@ void MQTTHandler::handleConfig(const char *config, unsigned int length)
 
     _message = "{" + std::string("\"shu\":") + std::to_string(shutterdata) + "," +
                "\"iso\":" + std::to_string(isodata) + "," +
-               "\"awb\":" + std::to_string(awbdata) + "," +
+               "\"wb\":" + std::to_string(awbdata) + "," +
                "\"ev\":" + std::to_string(evdata) + "}";
 
     // Serial.println(_message.c_str());
