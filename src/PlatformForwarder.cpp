@@ -33,7 +33,7 @@ bool PlatformForwarder::begin()
 
     log_i("turn on camera");
     _camPow.on();
-    _devPow.on();
+    _devPow.off();
 
     _eventGroup = xEventGroupCreate();
     xEventGroupSetBits(_eventGroup, EVT_DEVICE_OFF);
@@ -304,6 +304,8 @@ void PlatformForwarder::callback(std::string msg)
         xEventGroupClearBits(_eventGroup, EVT_DEVICE_ON);
         xEventGroupClearBits(_eventGroup, EVT_DEVICE_READY);
         xEventGroupSetBits(_eventGroup, EVT_DEVICE_OFF);
+        vTaskDelay(10000 / portTICK_PERIOD_MS);
+        instance->_devPow.off();
     }
     else if (msg.find("captured") != std::string::npos)
     {
@@ -401,13 +403,19 @@ void PlatformForwarder::callback(std::string msg)
 /*STATIC*/ void PlatformForwarder::sendCaptureCallback(TimerHandle_t xTimer)
 {
     static int camHardRes;
+    static int devHardRes;
     camHardRes += 1;
+    devHardRes += 1;
     log_d("capture timer callback start for = %d", camHardRes);
     EventBits_t uxBits = xEventGroupGetBits(_eventGroup);
     if (uxBits & EVT_DEVICE_OFF)
     {
-        log_w("re-boot device...");
-        // instance->_devPow.oneCycleOn();
+        if (devHardRes >= 3)
+        {
+            log_w("re-boot device...");
+            instance->_devPow.oneCycleOn();
+            devHardRes = 0;
+        }
     }
 
     instance->_device.sendComm("{\"capture\":1}");
@@ -418,6 +426,7 @@ void PlatformForwarder::callback(std::string msg)
         {
             log_e("camera not response for 5 minutes. hard resetting...");
             instance->_camPow.oneCycleOn();
+            instance->_devPow.oneCycleOn();
             camHardRes = 0;
         }
     }
