@@ -14,9 +14,19 @@ bool CaptureScheduleHandler::begin()
 {
     // Calculate the interval in seconds (240 intervals in total)
     if (stopHour > startHour)
+    {
         interval = ((stopHour - startHour) * 60 * 60) / numCapture;
+        if (interval < 120)
+        {
+            log_w("interval %d is too low, forcing to minimum 2 minutes", interval);
+            // interval = 120; // force to minimum interval value
+        }
+        log_d("interval: %d second", interval);
+    }
     else
+    {
         interval = ((24 + stopHour - startHour) * 60 * 60) / numCapture;
+    }
     // log_i("Interval time : %.2f minute or %d second", (float)interval / 60, interval);
     log_i("Interval time : %.2f minute or %d second stop:%d start:%d", (float)interval / 60, interval, stopHour, startHour);
 
