@@ -16,6 +16,9 @@ Time_DS3231 ds3231;
 Time_ntp ntp;
 #endif
 
+#include "mdns.h"
+#include "ota/OTA_Handler.h"
+
 Serial_Raspi raspi;
 Storage_LittleFS lfs;
 Switch_Mosfet camPow(3);
@@ -27,13 +30,39 @@ PlatformForwarder app(raspi, ds3231);
 PlatformForwarder app(raspi, ntp, lfs, camPow, devPow);
 #endif
 
+void setupMDNSResponder(const char *hostname);
+
 void setup()
 {
     Serial.begin(115200);
     app.begin();
+
+    // --- ota ---
+    otaHandler.setup(nullptr, nullptr);
+    xTaskCreate(otaHandler.task, "OtaHandler::task", 1024 * 6, NULL, 15, NULL);
+
+    //mdns
+    setupMDNSResponder("esp_timelapse");
 }
 
 void loop()
 {
     vTaskDelete(NULL);
+}
+
+void setupMDNSResponder(const char *hostname)
+{
+    // Serial.printf("hosname: %s\n", hostname);
+    ESP_ERROR_CHECK_WITHOUT_ABORT(mdns_init());
+    ESP_ERROR_CHECK_WITHOUT_ABORT(mdns_hostname_set(hostname));
+    ESP_LOGI("MAIN", "MDNS hostname: %s", hostname);
+
+    // OTA Service decription
+    mdns_txt_item_t serviceTxtData[3] = {
+        {"HW version", "v1"},
+        // {"FW version", version},
+        {"Device", "SPMD"},
+        {"path", "/"}};
+
+    ESP_ERROR_CHECK_WITHOUT_ABORT(mdns_service_add(NULL, "_http", "_tcp", 80, serviceTxtData, 3));
 }
