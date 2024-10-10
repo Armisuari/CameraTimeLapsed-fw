@@ -25,6 +25,8 @@ private:
     void handleCallback(char *topic, byte *payload, unsigned int length);
     void handleConfig(const char *config, unsigned int length);
 
+    static void heartBeatTask(void *pvParameter);
+
     const char *ssid;
     const char *password;
     const char *mqtt_server;

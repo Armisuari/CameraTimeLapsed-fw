@@ -14,6 +14,23 @@ MQTTHandler::MQTTHandler(const char *ssid, const char *password, const char *mqt
     instance = this; // Set the static instance pointer to this instance
 }
 
+/* STATIC */ void MQTTHandler::heartBeatTask(void *pvParameter)
+{
+    MQTTHandler* instance = reinterpret_cast<MQTTHandler *>(pvParameter);
+    log_d("heartBeatTask start !");
+    std::string jsonMsg;
+    JsonDocument doc;
+
+    while(1)
+    {
+        doc["time"] = time(NULL);
+        serializeJson(doc, jsonMsg);
+        instance->publish("angkasa/heartbeat", jsonMsg);
+        vTaskDelay(15000 / portTICK_PERIOD_MS);
+    }
+    vTaskDelete(NULL);
+}
+
 void MQTTHandler::reconnect()
 {
 
@@ -361,7 +378,8 @@ void MQTTHandler::init()
     client.setServer(mqtt_server, mqtt_port);
     client.setCallback(MQTTHandler::callback);
 
-    xTaskCreate(taskFunc, "taskFunc", 1024 * 4, this, 1, NULL);
+    xTaskCreate(&MQTTHandler::taskFunc, "taskFunc", 1024 * 4, this, 1, NULL);
+    xTaskCreate(&MQTTHandler::heartBeatTask, "heartbeat", 4096, this, 1, NULL);
 }
 
 bool MQTTHandler::publish(std::string topic, std::string message)
