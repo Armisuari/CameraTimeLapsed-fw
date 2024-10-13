@@ -8,54 +8,81 @@ MQTTHandler *MQTTHandler::instance = nullptr; // Initialize the static instance 
 
 static const char *TAG = "MqttHandler";
 
+EventGroupHandle_t MQTTHandler::_eventGroup = NULL;
+
 MQTTHandler::MQTTHandler(const char *ssid, const char *password, const char *mqtt_server, int mqtt_port)
     : ssid(ssid), password(password), mqtt_server(mqtt_server), mqtt_port(mqtt_port), client(espClient)
 {
-    instance = this; // Set the static instance pointer to this instance
+    // instance = this; // Set the static instance pointer to this instance
 }
 
 /* STATIC */ void MQTTHandler::heartBeatTask(void *pvParameter)
 {
-    MQTTHandler* instance = reinterpret_cast<MQTTHandler *>(pvParameter);
-    log_d("heartBeatTask start !");
+    vTaskDelay(2000);
+    MQTTHandler *instance = reinterpret_cast<MQTTHandler *>(pvParameter);
+    log_d("\n\nheartBeatTask start !");
     std::string jsonMsg;
-    JsonDocument doc;
+    DynamicJsonDocument doc(512);
 
-    while(1)
+    while (1)
     {
         doc["time"] = time(NULL);
         serializeJson(doc, jsonMsg);
-        instance->publish("angkasa/heartbeat", jsonMsg);
-        vTaskDelay(15000 / portTICK_PERIOD_MS);
+
+        EventBits_t uxBit = xEventGroupGetBits(_eventGroup);
+        if (uxBit & EVT_MQTT_CONNECTED)
+        {
+            log_d("publishing heartbeat");
+            instance->publish("angkasa/heartbeat", jsonMsg);
+        }
+        else
+        {
+            log_e("failed to publish heartbeat");
+            log_w("EVT_MQTT_DISCONNECTED");
+        }
+    
+        vTaskDelay(60000 / portTICK_PERIOD_MS);
     }
     vTaskDelete(NULL);
 }
 
 void MQTTHandler::reconnect()
 {
-
+    log_d("reconnecting mqtt");
     while (!client.connected())
     {
+        xEventGroupClearBits(_eventGroup, EVT_MQTT_CONNECTED);
+        xEventGroupSetBits(_eventGroup, EVT_MQTT_DISCONNECTED);
         if (WiFi.status() == WL_CONNECTED)
         {
-            Serial.print("Attempting MQTT connection...");
+            log_w("Attempting MQTT connection...");
             clientId += String(random(0xffff), HEX);
             if (client.connect(clientId.c_str()))
             {
-                Serial.println("connected");
+                log_i("mqtt connected");
                 // client.subscribe("angkasa/checkDevice");
+                xEventGroupClearBits(_eventGroup, EVT_MQTT_DISCONNECTED);
+                xEventGroupSetBits(_eventGroup, EVT_MQTT_CONNECTED);
+
+                EventBits_t uxBits = xEventGroupGetBits(_eventGroup);
+                if (uxBits & EVT_MQTT_CONNECTED)
+                {
+                    log_i("EVT_MQTT_CONNECTED");
+                }
+
                 client.subscribe("reqStream");
                 client.subscribe("angkasaConfig");
                 client.subscribe("angkasa/deviceSetConfig");
 
+                log_d("publishing device ready...");
                 client.publish("angkasa/checkDevice", "Device Ready !");
             }
             else
             {
-                Serial.print("failed, rc=");
-                Serial.print(client.state());
-                Serial.println(" try again in 5 seconds");
-                delay(5000);
+                log_e("failed, rc= %d | try again in 5 seconds", client.state());
+                // xEventGroupClearBits(_eventGroup, EVT_MQTT_CONNECTED);
+                // xEventGroupSetBits(_eventGroup, EVT_MQTT_DISCONNECTED);
+                delay(2000);
             }
         }
     }
@@ -378,12 +405,22 @@ void MQTTHandler::init()
     client.setServer(mqtt_server, mqtt_port);
     client.setCallback(MQTTHandler::callback);
 
+    _eventGroup = xEventGroupCreate();
+    if (_eventGroup == NULL)
+    {
+        log_e("Failed to create eventGroup");
+        return;
+    }
+    // xEventGroupClearBits(_eventGroup, EVT_MQTT_CONNECTED);
+    xEventGroupSetBits(_eventGroup, EVT_MQTT_DISCONNECTED);
+
     xTaskCreate(&MQTTHandler::taskFunc, "taskFunc", 1024 * 4, this, 1, NULL);
     xTaskCreate(&MQTTHandler::heartBeatTask, "heartbeat", 4096, this, 1, NULL);
 }
 
 bool MQTTHandler::publish(std::string topic, std::string message)
 {
+    log_d("publishing message...");
     if (WiFi.status() != WL_CONNECTED)
     {
         ESP_LOGW(TAG, "waiting wifi connection");
@@ -396,7 +433,7 @@ bool MQTTHandler::publish(std::string topic, std::string message)
     }
     else if (WiFi.status() == WL_CONNECTED && !client.connected())
     {
-        ESP_LOGD(TAG, "connectiong to platform...");
+        ESP_LOGD(TAG, "connecting to platform...");
         if (!client.connect(clientId.c_str()))
         {
             ESP_LOGE(TAG, "failed to connect to platform !");
@@ -404,16 +441,27 @@ bool MQTTHandler::publish(std::string topic, std::string message)
         }
     }
 
-    bool res = client.publish(topic.c_str(), message.c_str());
-
-    if (!res)
+    EventBits_t uxBits = xEventGroupGetBits(_eventGroup);
+    if (uxBits & EVT_MQTT_CONNECTED)
     {
-        ESP_LOGE(TAG, "Failed to publish message");
-        return false;
+        log_i("EVT_MQTT_CONNECTED");
+        // xEventGroupWaitBits(_eventGroup, EVT_MQTT_CONNECTED, pdTRUE, pdFALSE, portMAX_DELAY);
+        bool res = client.publish(topic.c_str(), message.c_str());
+
+        if (!res)
+        {
+            ESP_LOGE(TAG, "Failed to publish message");
+            return false;
+        }
+        else
+        {
+            ESP_LOGD(TAG, "Succed to publish message : %s", message.c_str());
+        }
     }
     else
     {
-        ESP_LOGD(TAG, "Succed to publish message : %s", message.c_str());
+        log_w("EVT_MQTT_DISCONNECTED");
+        return false;
     }
 
     return true;
@@ -421,14 +469,15 @@ bool MQTTHandler::publish(std::string topic, std::string message)
 
 void MQTTHandler::taskFunc(void *pvParam)
 {
-    MQTTHandler *app = static_cast<MQTTHandler *>(pvParam);
+    log_d("start mqtt task");
+    MQTTHandler *instance = reinterpret_cast<MQTTHandler *>(pvParam);
     while (true)
     {
-        if (!app->client.connected())
+        if (!instance->client.connected())
         {
-            app->reconnect();
+            instance->reconnect();
         }
-        app->client.loop();
+        instance->client.loop();
     }
 }
 

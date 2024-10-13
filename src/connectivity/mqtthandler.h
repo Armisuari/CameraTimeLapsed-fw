@@ -10,6 +10,9 @@
 #include "CONFIG.h"
 #include <HardwareSerial.h>
 
+static const unsigned int EVT_MQTT_CONNECTED       = BIT0;
+static const unsigned int EVT_MQTT_DISCONNECTED    = BIT1;
+
 class MQTTHandler
 {
 public:
@@ -26,6 +29,7 @@ private:
     void handleConfig(const char *config, unsigned int length);
 
     static void heartBeatTask(void *pvParameter);
+    static EventGroupHandle_t _eventGroup;
 
     const char *ssid;
     const char *password;
