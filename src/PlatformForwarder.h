@@ -10,6 +10,7 @@
 #include <interface/TimeInterface.h>
 #include <interface/StorageInterface.h>
 #include <interface/SwitchPowerInterface.h>
+#include <interface/PowerSensorInterface.h>
 
 #include <features/captureScheduler.h>
 
@@ -24,7 +25,7 @@ static const unsigned int EVT_DEVICE_REBOOT    = BIT6;
 class PlatformForwarder
 {
 public:
-    PlatformForwarder(SerialInterface &device, TimeInterface &time, StorageInterface &storage, SwitchPowerInterface &camPow, SwitchPowerInterface &devPow);
+    PlatformForwarder(SerialInterface &device, TimeInterface &time, StorageInterface &storage, SwitchPowerInterface &camPow, SwitchPowerInterface &devPow, PowerSensorInterface &senPow);
     bool begin();
     bool deviceHandler();
 
@@ -36,6 +37,7 @@ private:
     StorageInterface &_storage;
     SwitchPowerInterface &_camPow;
     SwitchPowerInterface &_devPow;
+    PowerSensorInterface &_senPow;
 
     // CaptureScheduleHandler capScheduler{_time};
     CaptureScheduleHandler *capScheduler;
@@ -75,7 +77,6 @@ private:
 
     static void captureSchedulerTask(void *pvParameter);
     static void deviceHandlerTask(void *pvParameter);
-    // static void heartbeatTask(void *pvParameter);
     // static void systemResetTask(void *pvParameter);
     // static void mqttListenerTask(void *pvParameter);
 };

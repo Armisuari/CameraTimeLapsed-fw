@@ -8,6 +8,7 @@
 #include <esp32/driver/Serial_Raspi.h>
 #include <esp32/driver/Storage_LittleFS.h>
 #include <esp32/driver/Switch_Mosfet.h>
+#include <esp32/driver/PowerSensor_INA226.h>
 #ifndef DEBUG_ONLY_ESP
 #include <esp32/driver/Time_DS3231.h>
 Time_DS3231 ds3231;
@@ -23,11 +24,12 @@ Serial_Raspi raspi;
 Storage_LittleFS lfs;
 Switch_Mosfet camPow(3);
 Switch_Mosfet devPow(4);
+PowerSensor_INA226 senPow;
 
 #ifndef DEBUG_ONLY_ESP
 PlatformForwarder app(raspi, ds3231);
 #else
-PlatformForwarder app(raspi, ntp, lfs, camPow, devPow);
+PlatformForwarder app(raspi, ntp, lfs, camPow, devPow, senPow);
 #endif
 
 void setupMDNSResponder(const char *hostname);
