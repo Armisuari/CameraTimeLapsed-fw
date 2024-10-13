@@ -162,6 +162,13 @@ bool PlatformForwarder::processJsonCommand(const std::string &msgCommand)
     if (doc["reqConfig"] == 1)
     {
         std::string configJson = _storage.readFile();
+
+        if (configJson == "")
+        {
+            _mqtt.publish("angkasa/syslog", "{\"syslog\" : \"configJson empty\"}");
+            return false;
+        }
+
         DynamicJsonDocument docConfig(4096);
         DeserializationError error = deserializeJson(docConfig, configJson.c_str());
 
@@ -413,7 +420,24 @@ void PlatformForwarder::callback(std::string msg)
     }
     else if (msg.find("camera_name") != std::string::npos)
     {
-        sendToPlatform("angkasa/settings", msg);
+        StaticJsonDocument<1024> docConfig;
+        DeserializationError error = deserializeJson(docConfig, msg.c_str());
+
+        if (error)
+        {
+            log_e("deserializeJson failed: %s", error.f_str());
+            instance->_mqtt.publish("angksa/syslog", "failed deserialize json");
+            return;
+        }
+
+        docConfig["battery"] = instance->_senPow.readVoltage();
+        docConfig["battery_percentage"] = instance->_senPow.batPercent();
+
+        std::string newMsg;
+        serializeJson(docConfig, newMsg);
+        serializeJsonPretty(docConfig, Serial);
+
+        sendToPlatform("angkasa/settings", newMsg);
     }
 }
 

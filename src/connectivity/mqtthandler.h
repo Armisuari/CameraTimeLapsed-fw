@@ -24,8 +24,8 @@ public:
 
 private:
     void reconnect();
-    static void callback(char *topic, byte *payload, unsigned int length);
-    void handleCallback(char *topic, byte *payload, unsigned int length);
+    void callback(char *topic, byte *payload, unsigned int length);
+    // void handleCallback(char *topic, byte *payload, unsigned int length);
     void handleConfig(const char *config, unsigned int length);
 
     static void heartBeatTask(void *pvParameter);
@@ -50,7 +50,7 @@ private:
     int evdata;
     bool isScheduleOn = true;
 
-    static MQTTHandler *instance;
+    // static MQTTHandler *instance;
 
     std::string _message;
     String clientId = "ESP32Client-";

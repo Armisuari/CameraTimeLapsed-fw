@@ -4,7 +4,7 @@ HardwareSerial MySerial(1);
 
 WifiHandler _wifi(CONFIG_MAIN_WIFI_DEFAULT_SSID, CONFIG_MAIN_WIFI_DEFAULT_PASS);
 
-MQTTHandler *MQTTHandler::instance = nullptr; // Initialize the static instance pointer
+// MQTTHandler *MQTTHandler::instance = nullptr; // Initialize the static instance pointer
 
 static const char *TAG = "MqttHandler";
 
@@ -40,7 +40,7 @@ MQTTHandler::MQTTHandler(const char *ssid, const char *password, const char *mqt
             log_e("failed to publish heartbeat");
             log_w("EVT_MQTT_DISCONNECTED");
         }
-    
+
         vTaskDelay(60000 / portTICK_PERIOD_MS);
     }
     vTaskDelete(NULL);
@@ -88,20 +88,16 @@ void MQTTHandler::reconnect()
     }
 }
 
+// void MQTTHandler::callback(char *topic, byte *payload, unsigned int length)
+// {
+//     handleCallback(topic, payload, length);
+// }
+
+// void MQTTHandler::handleCallback(char *topic, byte *payload, unsigned int length)
 void MQTTHandler::callback(char *topic, byte *payload, unsigned int length)
 {
-    if (instance != nullptr)
-    {
-        instance->handleCallback(topic, payload, length);
-    }
-}
-
-void MQTTHandler::handleCallback(char *topic, byte *payload, unsigned int length)
-{
     Serial.printf("Message arrived [%s] ", topic);
-
     _message = std::string((char *)payload, length);
-
     Serial.println(_message.c_str());
 }
 
@@ -403,7 +399,10 @@ void MQTTHandler::init()
 {
     _wifi.init();
     client.setServer(mqtt_server, mqtt_port);
-    client.setCallback(MQTTHandler::callback);
+    // client.setCallback(MQTTHandler::callback);
+    // client.setCallback(callback);
+    client.setCallback(std::bind(&MQTTHandler::callback, this,
+                                 std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
 
     _eventGroup = xEventGroupCreate();
     if (_eventGroup == NULL)

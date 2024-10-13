@@ -9,7 +9,7 @@
 #include <WebServer.h>
 // #include "config.h"
 
-#define CONFIG_MAIN_FW_VERSION_STRING "v0.0.2"
+#define CONFIG_MAIN_FW_VERSION_STRING "v0.0.5"
 
 typedef std::function<void()> onOtaStateChange_t;
 
