@@ -20,6 +20,7 @@ bool CaptureScheduleHandler::begin()
         {
             log_w("interval %d is too low, forcing to minimum 2 minutes", interval);
             // interval = 120; // force to minimum interval value
+            interval = 120;
         }
         log_d("interval: %d second", interval);
     }

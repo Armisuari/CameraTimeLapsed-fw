@@ -25,10 +25,10 @@ private:
     bool trigstat = false;
     uint32_t _trigEpoch;
 
-    int startHour = 6;
-    int stopHour = 18;
+    int startHour = 0;
+    int stopHour = 23;
     uint32_t interval;
-    uint32_t numCapture = 600; // 13 - 14 photo for a hour | schedule interval 1 minute -> Actual around 4 minute
+    uint32_t numCapture = 1000; // 13 - 14 photo for a hour | schedule interval 1 minute -> Actual around 4 minute
     // 23 hour -> max 290 - 300 photo
     // 11 hour -> max 140 - 145 photo
     // 8 hour -> max 100 - 105 photo
