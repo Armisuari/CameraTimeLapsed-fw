@@ -97,12 +97,13 @@ void MQTTHandler::reconnect()
 void MQTTHandler::callback(char *topic, byte *payload, unsigned int length)
 {
     Serial.printf("Message arrived [%s] ", topic);
-    _message = std::string((char *)payload, length);
+    _message = std::move(std::string((char *)payload, length));
     Serial.println(_message.c_str());
 }
 
 bool MQTTHandler::processMessage(std::string &message)
 {
+    // log_d("%s", _message.c_str());
     static bool _loggedEmptyMessage = false;
     if (_message.empty())
     {

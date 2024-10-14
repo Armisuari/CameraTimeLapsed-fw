@@ -67,7 +67,6 @@ bool PlatformForwarder::begin()
     // xTaskCreate(&PlatformForwarder::mqttListenerTask, " mqtt listener task", 1024 * 4, this, 2, &mqttListenerTaskHandle);
 
     delay(2000);
-    // capScheduler->captureCount = std::move(std::stoi(_storage.readNumCapture()));
     capScheduler->captureCount = std::move(atoi(_storage.readNumCapture().c_str()));
     log_d("load number capture data: %d", capScheduler->captureCount);
 
@@ -104,6 +103,11 @@ bool PlatformForwarder::deviceHandler()
     {
         return false;
     }
+
+    JsonDocument docMsg;
+    deserializeJson(docMsg, msgCommand.c_str());
+    serializeJsonPretty(docMsg, Serial);
+    Serial.println();
 
     log_d("Receiving command: %s", msgCommand.c_str());
     _mqtt.publish("angkasa/syslog", "{\"syslog\" : \"receiving command\"}");
@@ -161,6 +165,7 @@ bool PlatformForwarder::processJsonCommand(const std::string &msgCommand)
 
     if (doc["reqConfig"] == 1)
     {
+        log_d("request config");
         std::string configJson = _storage.readFile();
 
         if (configJson == "")
@@ -188,8 +193,6 @@ bool PlatformForwarder::processJsonCommand(const std::string &msgCommand)
 
         log_d("readFile(): %s", newConfigJson.c_str());
         _mqtt.publish("angkasa/settings", newConfigJson);
-        // log_d("readFile(): %s", configJson.c_str());
-        // _mqtt.publish("angkasa/settings", configJson);
         _mqtt.publish("angkasa/syslog", "{\"syslog\" : \"request config\"}");
         return false;
     }
@@ -232,7 +235,10 @@ bool PlatformForwarder::processJsonCommand(const std::string &msgCommand)
     log_d("writing last command to fs");
     try
     {
-        instance->_storage.writeLastCommand(msgCommand);
+        if(!instance->_storage.writeLastCommand(msgCommand))
+        {
+            log_e("failed to write last command on fs");
+        }
     }
     catch (const std::exception &e)
     {
