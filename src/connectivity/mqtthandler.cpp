@@ -26,7 +26,10 @@ MQTTHandler::MQTTHandler(const char *ssid, const char *password, const char *mqt
 
     while (1)
     {
+        static uint64_t count;
+        count += 1;
         doc["time"] = time(NULL);
+        doc["count"] = count;
         serializeJson(doc, jsonMsg);
 
         EventBits_t uxBit = xEventGroupGetBits(_eventGroup);
