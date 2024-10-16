@@ -61,10 +61,8 @@ bool PlatformForwarder::begin()
     capScheduler->begin();
 
     xTaskCreate(&PlatformForwarder::captureSchedulerTask, " capture scheduler task", 1024 * 4, this, 3, &captureSchedulerTaskHandle);
-    xTaskCreate(&PlatformForwarder::deviceHandlerTask, " device handler task", 1024 * 4, this, 30, &deviceHandlerTaskHandle);
-    // xTaskCreate(&PlatformForwarder::heartbeatTask, " heartbeat task", 1024 * 8, this, 1, &heartbeatTaskHandle);
+    xTaskCreate(&PlatformForwarder::deviceHandlerTask, " device handler task", 1024 * 4, this, 35, &deviceHandlerTaskHandle);
     // xTaskCreate(&PlatformForwarder::systemResetTask, " system reset task", 1024 * 8, this, 15, &systemResetTaskHandle);
-    // xTaskCreate(&PlatformForwarder::mqttListenerTask, " mqtt listener task", 1024 * 4, this, 2, &mqttListenerTaskHandle);
 
     delay(2000);
     capScheduler->captureCount = std::move(atoi(_storage.readNumCapture().c_str()));
@@ -78,12 +76,6 @@ bool PlatformForwarder::begin()
         log_w("there is a last command has not received to device: %s", msgCommand.c_str());
         xEventGroupClearBits(_eventGroup, EVT_COMMAND_REC);
     }
-
-    // Initialize Watchdog Timer
-    // log_i("Initialize Watchdog Timer");
-    // esp_task_wdt_init(WDT_TIMEOUT, true); // Enable panic so ESP32 restarts
-    // esp_task_wdt_add(captureSchedulerTaskHandle);             // Add current thread to WDT
-    // esp_task_wdt_add(deviceHandlerTaskHandle);               // Add current thread to WDT
 
     log_d("publishing init done");
     _mqtt.publish("angkasa/syslog", "{\"syslog\" : \"init done\"}");
