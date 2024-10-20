@@ -76,6 +76,7 @@ void MQTTHandler::reconnect()
                 client.subscribe("reqStream");
                 client.subscribe("angkasaConfig");
                 client.subscribe("angkasa/deviceSetConfig");
+                client.subscribe("angkasa/devicePower");
 
                 log_d("publishing device ready...");
                 client.publish("angkasa/checkDevice", "Device Ready !");
@@ -401,6 +402,7 @@ void MQTTHandler::handleConfig(const char *config, unsigned int length)
 
 void MQTTHandler::init()
 {
+    vTaskDelay(25000);
     _wifi.init();
     client.setServer(mqtt_server, mqtt_port);
     // client.setCallback(MQTTHandler::callback);

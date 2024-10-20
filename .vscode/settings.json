@@ -50,5 +50,7 @@
         "thread": "cpp",
         "cinttypes": "cpp",
         "typeinfo": "cpp"
-    }
+    },
+    "idf.port": "/dev/tty.usbmodem101",
+    "idf.adapterTargetName": "esp32c3"
 }

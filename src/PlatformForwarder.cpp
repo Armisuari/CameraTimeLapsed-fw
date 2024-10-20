@@ -1,6 +1,9 @@
 #include "PlatformForwarder.h"
 #include <ArduinoJson.h>
+#include <WiFi.h>
 // #include "esp_task_wdt.h"
+
+#define WATCHDOG_TIMEOUT (60000 * 5) // 5 mins timeout
 
 #define CAPTURE_SCHEDULER
 #define WDT_TIMEOUT 180
@@ -8,15 +11,17 @@
 PlatformForwarder *PlatformForwarder::instance = nullptr;
 
 /* STATIC */ EventGroupHandle_t PlatformForwarder::_eventGroup = NULL;
+
 /* STATIC */ TimerHandle_t PlatformForwarder::_checkDeviceTimer = NULL;
 /* STATIC */ TimerHandle_t PlatformForwarder::_captureTimer = NULL;
-/* STATIC */ int PlatformForwarder::countHardReset = 0;
+/* STATIC */ TimerHandle_t PlatformForwarder::_watchDogTimer = NULL;
+
 /* STATIC */ QueueHandle_t PlatformForwarder::_msgQueue = NULL;
+
 /* STATIC */ TaskHandle_t PlatformForwarder::captureSchedulerTaskHandle = NULL;
 /* STATIC */ TaskHandle_t PlatformForwarder::deviceHandlerTaskHandle = NULL;
-/* STATIC */ TaskHandle_t PlatformForwarder::heartbeatTaskHandle = NULL;
-/* STATIC */ TaskHandle_t PlatformForwarder::systemResetTaskHandle = NULL;
-/* STATIC */ TaskHandle_t PlatformForwarder::mqttListenerTaskHandle = NULL;
+
+/* STATIC */ int PlatformForwarder::countHardReset = 0;
 
 PlatformForwarder::PlatformForwarder(SerialInterface &device, TimeInterface &time, StorageInterface &storage, SwitchPowerInterface &camPow, SwitchPowerInterface &devPow, PowerSensorInterface &senPow)
     : _device(device), _time(time), _storage(storage), _camPow(camPow), _devPow(devPow), _senPow(senPow)
@@ -27,82 +32,152 @@ PlatformForwarder::PlatformForwarder(SerialInterface &device, TimeInterface &tim
 
 bool PlatformForwarder::begin()
 {
-    delay(4000);
+    delay(4000); // Initial delay
+    initPowerModules();
+
+    if (!initEventGroup() || !initMsgQueue())
+        return false;
+    if (!initPeripherals())
+        return false;
+
+    JsonDocument jsonDoc;
+
+    handleLastCommand();
+    log_w("msgCommand = %s", msgCommand.c_str());
+
+    log_d("Initialization complete, publishing system log");
+    pubSyslog("init done");
+
+    createMainTasks();
+
+    if (!startWatchdogTimer())
+    {
+        log_e("failed to run wdt");
+        pubSyslog("failed to run wdt");
+        esp_restart();
+    }
+
+    log_w("msgCommand = %s", msgCommand.c_str());
+    return true;
+}
+
+void PlatformForwarder::initPowerModules()
+{
     _camPow.init();
     _devPow.init();
     _senPow.init();
 
-    log_i("turn on camera");
+    log_i("Turning on camera power");
     _camPow.on();
-    _devPow.off();
-    _devPow.off();
+    _devPow.off(); // It seems calling off twice is redundant, so keep it once.
+}
 
+bool PlatformForwarder::initEventGroup()
+{
     _eventGroup = xEventGroupCreate();
+    if (_eventGroup == NULL)
+    {
+        log_e("Failed to create event group");
+        return false;
+    }
     xEventGroupSetBits(_eventGroup, EVT_DEVICE_OFF);
+    return true;
+}
+
+bool PlatformForwarder::initMsgQueue()
+{
     _msgQueue = xQueueCreate(40, sizeof(std::string));
     if (_msgQueue == NULL)
     {
         log_e("Failed to create msgQueue");
         return false;
     }
+    return true;
+}
 
+bool PlatformForwarder::initPeripherals()
+{
     _mqtt.init();
     _mqtt.publish("angkasa/checkDevice", "{\"deviceReady\" : 0}");
-    bool res = _device.begin() && _time.init() && _storage.init();
 
+    bool res = _device.begin() && _time.init() && _storage.init();
     if (!res)
     {
-        log_e("peripheral init failed");
+        log_e("Peripheral initialization failed");
         return false;
     }
 
     _device.setCallback(callback);
 
     capScheduler->begin();
+    delay(2000); // Let the scheduler stabilize after initialization
 
-    xTaskCreate(&PlatformForwarder::captureSchedulerTask, " capture scheduler task", 1024 * 4, this, 3, &captureSchedulerTaskHandle);
-    xTaskCreate(&PlatformForwarder::deviceHandlerTask, " device handler task", 1024 * 4, this, 35, &deviceHandlerTaskHandle);
-    // xTaskCreate(&PlatformForwarder::systemResetTask, " system reset task", 1024 * 8, this, 15, &systemResetTaskHandle);
-
-    delay(2000);
     capScheduler->captureCount = std::move(atoi(_storage.readNumCapture().c_str()));
-    log_d("load number capture data: %d", capScheduler->captureCount);
+    log_d("Loaded capture count data: %d", capScheduler->captureCount);
 
+    return true;
+}
+
+void PlatformForwarder::handleLastCommand()
+{
     lastCommand = _storage.readLastCommand();
     msgCommand = std::move(lastCommand);
 
     if (!msgCommand.empty())
     {
-        log_w("there is a last command has not received to device: %s", msgCommand.c_str());
+        log_w("Unreceived command detected: %s", msgCommand.c_str());
         xEventGroupClearBits(_eventGroup, EVT_COMMAND_REC);
     }
+}
 
-    log_d("publishing init done");
-    _mqtt.publish("angkasa/syslog", "{\"syslog\" : \"init done\"}");
-
-    return true;
+void PlatformForwarder::createMainTasks()
+{
+    xTaskCreate(&PlatformForwarder::captureSchedulerTask, "capture scheduler task", 1024 * 4, this, 3, &captureSchedulerTaskHandle);
+    xTaskCreate(&PlatformForwarder::deviceHandlerTask, "device handler task", 1024 * 4, this, 35, &deviceHandlerTaskHandle);
 }
 
 bool PlatformForwarder::deviceHandler()
 {
+    if (WiFi.status() != WL_CONNECTED)
+    {
+        wifiDisconnected = true;
+        if (WiFi.status() == WL_CONNECTED)
+        {
+            if (_watchDogTimer != NULL)
+            {
+                // Reset watchdog timer if connected
+                log_e("resetting wdt due to wifi connected");
+                xTimerReset(_watchDogTimer, 0);
+            }
+            wifiDisconnected = false;
+        }
+    }
+
+    // if (!msgCommand.empty())
+    // {
+    //     log_e("!msgCommand.empty()");
+    //     log_w("msgCommand = %s", msgCommand.c_str());
+    //     receiveCommand = true;
+    // }
+
     receiveCommand = _mqtt.processMessage(msgCommand);
 
-    if (!msgCommand.empty())
-    {
-        receiveCommand = true;
-    }
-    else if (!receiveCommand)
+    // handleLastCommand();
+
+    if (!receiveCommand)
     {
         return false;
     }
 
+    log_w("msgCommand = %s", msgCommand.c_str());
+
     JsonDocument docMsg;
     deserializeJson(docMsg, msgCommand.c_str());
-    serializeJsonPretty(docMsg, Serial);
-    Serial.println();
+    // serializeJsonPretty(docMsg, Serial);
+    // Serial.println();
 
     log_d("Receiving command: %s", msgCommand.c_str());
-    _mqtt.publish("angkasa/syslog", "{\"syslog\" : \"receiving command\"}");
+    pubSyslog("Receiving command");
 
     if (!processJsonCommand(msgCommand))
     {
@@ -112,7 +187,7 @@ bool PlatformForwarder::deviceHandler()
     }
 
     log_i("waiting for device ready after receive command...");
-    _mqtt.publish("angkasa/syslog", "{\"syslog\" : \"waiting device ready\"}");
+    pubSyslog("waiting device ready");
     handleDevicePower();
     log_d("send command to device");
     _device.sendComm(msgCommand);
@@ -143,26 +218,48 @@ bool PlatformForwarder::enqueueMessage(const std::string &msgCommand)
     return true;
 }
 
+void PlatformForwarder::pubSyslog(std::string logMessage)
+{
+    JsonDocument doc;
+    std::string docStr;
+    doc["time"] = time(NULL);
+    doc["msg"] = logMessage;
+
+    serializeJson(doc, docStr);
+    // serializeJson(doc, Serial);
+    _mqtt.publish("angkasa/syslog", docStr);
+}
+
 bool PlatformForwarder::processJsonCommand(const std::string &msgCommand)
 {
     DynamicJsonDocument doc(1024);
     DeserializationError error = deserializeJson(doc, msgCommand.c_str());
+
     EventBits_t uxBits = xEventGroupGetBits(_eventGroup);
 
     if (error)
     {
         log_e("deserializeJson failed: %s", error.f_str());
+        pubSyslog("deserializeJson failed");
         return false;
     }
 
-    if (doc["reqConfig"] == 1)
+    if (doc["pwr"] == 1)
     {
-        log_d("request config");
+        log_d("Request device on");
+        _devPow.oneCycleOn();
+        pubSyslog("Request to turn on device");
+        return false;
+    }
+    else if (doc["reqConfig"] == 1)
+    {
+        log_d("request camera config");
         std::string configJson = _storage.readFile();
 
         if (configJson == "")
         {
-            _mqtt.publish("angkasa/syslog", "{\"syslog\" : \"configJson empty\"}");
+            log_e("configJson empty");
+            pubSyslog("configJson empty");
             return false;
         }
 
@@ -172,7 +269,7 @@ bool PlatformForwarder::processJsonCommand(const std::string &msgCommand)
         if (error)
         {
             log_e("deserializeJson failed: %s", error.f_str());
-            _mqtt.publish("angkasa/syslog", "{\"syslog\" : \"deserializeJson failed\"}");
+            pubSyslog("deserializeJson failed");
             return false;
         }
 
@@ -181,63 +278,54 @@ bool PlatformForwarder::processJsonCommand(const std::string &msgCommand)
 
         std::string newConfigJson;
         serializeJson(docConfig, newConfigJson);
-        serializeJsonPretty(docConfig, Serial);
+        // serializeJsonPretty(docConfig, Serial);
 
         log_d("readFile(): %s", newConfigJson.c_str());
         _mqtt.publish("angkasa/settings", newConfigJson);
-        _mqtt.publish("angkasa/syslog", "{\"syslog\" : \"request config\"}");
+        pubSyslog("request camera config");
         return false;
     }
     else if (msgCommand.find("shu") != std::string::npos)
     {
-        // log_e("suspend capture scheduler");
-        // vTaskSuspend(captureSchedulerTaskHandle);
         suspendCaptureSchedule();
+        pubSyslog("Set Camera Config");
     }
     else if (doc["stream"] == 1)
     {
-        // log_e("suspend capture scheduler");
-        // vTaskSuspend(captureSchedulerTaskHandle);
         suspendCaptureSchedule();
         if (uxBits & EVT_LIVE_STREAM)
         {
             log_d("block command, already live stream");
-            _mqtt.publish("angkasa/syslog", "{\"syslog\" : \"block command, already live stream\"}");
+            pubSyslog("block command, already live stream");
             return false;
         }
-        _mqtt.publish("angkasa/syslog", "{\"syslog\" : \"request start live stream\"}");
+        pubSyslog("request to start live stream");
     }
     else if (doc["stream"] == 0)
     {
         if (!(uxBits & EVT_LIVE_STREAM))
         {
             log_d("block command, already not live stream");
-            _mqtt.publish("angkasa/syslog", "{\"syslog\" : \"block command, already not live stream\"}");
+            pubSyslog("block command, already not live stream");
             return false;
         }
-        _mqtt.publish("angkasa/syslog", "{\"syslog\" : \"request stop live stream\"}");
+        pubSyslog("request stop live stream");
     }
     else if (msgCommand.find("restart") != std::string::npos)
     {
         log_i("System reset, triggered by command");
+        pubSyslog("System reset, triggered by command");
         esp_restart();
         return false;
     }
 
     log_d("writing last command to fs");
-    try
+    if (!_storage.writeLastCommand(msgCommand))
     {
-        if(!instance->_storage.writeLastCommand(msgCommand))
-        {
-            log_e("failed to write last command on fs");
-        }
-    }
-    catch (const std::exception &e)
-    {
-        log_e("error : %s", e.what());
+        log_e("failed to write last command on fs");
     }
 
-    log_i("executing command !");
+    log_d("executing command !");
     return true;
 }
 
@@ -249,13 +337,13 @@ void PlatformForwarder::handleDevicePower()
     {
         log_w("Turning on device");
         _devPow.oneCycleOn();
-        _mqtt.publish("angkasa/syslog", "{\"syslog\" : \"turning on device\"}");
-        // xEventGroupClearBits(_eventGroup, EVT_DEVICE_OFF);
-        // xEventGroupSetBits(_eventGroup, EVT_DEVICE_ON);
+        pubSyslog("turning on device");
     }
 
     if (uxBits & EVT_DEVICE_READY)
     {
+        log_w("Device was ready");
+        pubSyslog("Device was ready.");
         return;
     }
 
@@ -294,11 +382,14 @@ void PlatformForwarder::handleCapture()
     {
         if (uxBits & EVT_DEVICE_OFF)
         {
+            log_w("Turning on device for capture");
+            pubSyslog("Turning on device for capture");
             _devPow.oneCycleOn();
         }
 
         log_w("capture schedule is waiting for device ready...");
-        _captureTimer = xTimerCreate("captureTimer", pdMS_TO_TICKS(30000), pdTRUE, this, sendCaptureCallback);
+        pubSyslog("capture schedule is waiting for device ready...");
+        _captureTimer = xTimerCreate("captureTimer", pdMS_TO_TICKS(60000), pdTRUE, this, sendCaptureCallback);
 
         if (_captureTimer == NULL)
         {
@@ -316,24 +407,16 @@ void PlatformForwarder::handleCapture()
         xTimerDelete(_captureTimer, 0);
 
         log_w("Triggering capture due to schedule");
+        pubSyslog("Triggering capture due to schedule");
         _device.sendComm("{\"capture\":1}");
     }
-    else if (capScheduler->skippedCapture() > 0)
-    {
-        std::string text = "{\"skippedCapture\":" + std::to_string(capScheduler->skippedCapture()) + "}";
-        _device.sendComm(text);
-        capScheduler->skippedCaptureCount = 0;
-    }
 }
 
-void PlatformForwarder::sendToPlatform(std::string topic, std::string msg)
+void PlatformForwarder::cbFunction()
 {
-    instance->_storage.writeFile(msg);
-    log_i("send message to platform : %s", msg.c_str());
-    instance->_mqtt.publish(topic, msg);
 }
 
-void PlatformForwarder::callback(std::string msg)
+/*STATIC*/ void PlatformForwarder::callback(std::string msg)
 {
     static int countBle;
     log_d("msg = %s", msg.c_str());
@@ -343,7 +426,7 @@ void PlatformForwarder::callback(std::string msg)
         log_w("device turned on");
         xEventGroupClearBits(_eventGroup, EVT_DEVICE_OFF);
         xEventGroupSetBits(_eventGroup, EVT_DEVICE_ON);
-        instance->_mqtt.publish("angkasa/syslog", "{\"syslog\" : \"device turned on\"}");
+        instance->pubSyslog("device turned on");
     }
     else if (msg.find("shutdown") != std::string::npos)
     {
@@ -353,9 +436,9 @@ void PlatformForwarder::callback(std::string msg)
         xEventGroupSetBits(_eventGroup, EVT_DEVICE_OFF);
         vTaskDelay(10000 / portTICK_PERIOD_MS);
         log_i("succed to backup to gdrive");
-        instance->_mqtt.publish("angkasa/syslog", "{\"syslog\" : \"succed backup\"}");
+        instance->pubSyslog("succed backup to Google drive");
         instance->_devPow.off();
-        instance->_mqtt.publish("angkasa/syslog", "{\"syslog\" : \"device turned off\"}");
+        instance->pubSyslog("device turned off");
     }
     else if (msg.find("captured") != std::string::npos)
     {
@@ -363,7 +446,7 @@ void PlatformForwarder::callback(std::string msg)
         instance->_storage.writeNumCapture(std::to_string(instance->capScheduler->captureCount));
         log_i("succed to capture by schedule for : %d", instance->capScheduler->captureCount);
         xEventGroupSetBits(_eventGroup, EVT_DEVICE_READY);
-        instance->_mqtt.publish("angkasa/syslog", "{\"syslog\" : \"camera capturing\"}");
+        instance->pubSyslog("camera capturing");
     }
     else if (msg == "recConfig")
     {
@@ -372,7 +455,7 @@ void PlatformForwarder::callback(std::string msg)
         xEventGroupSetBits(_eventGroup, EVT_COMMAND_REC);
         instance->_storage.deleteFileLastCommand();
         instance->resumeCaptureSchedule();
-        instance->_mqtt.publish("angkasa/syslog", "{\"syslog\" : \"receiving new camera config\"}");
+        instance->pubSyslog("receiving new camera config");
     }
     else if (msg == "streamStart")
     {
@@ -381,7 +464,7 @@ void PlatformForwarder::callback(std::string msg)
         xEventGroupSetBits(_eventGroup, EVT_COMMAND_REC);
         xEventGroupSetBits(_eventGroup, EVT_LIVE_STREAM);
         instance->_storage.deleteFileLastCommand();
-        instance->_mqtt.publish("angkasa/syslog", "{\"syslog\" : \"live stream start\"}");
+        instance->pubSyslog("live stream start");
     }
     else if (msg == "streamStop")
     {
@@ -391,14 +474,14 @@ void PlatformForwarder::callback(std::string msg)
         xEventGroupClearBits(_eventGroup, EVT_LIVE_STREAM);
         instance->_storage.deleteFileLastCommand();
         instance->resumeCaptureSchedule();
-        instance->_mqtt.publish("angkasa/syslog", "{\"syslog\" : \"live stream stop\"}");
+        instance->pubSyslog("live stream stop");
     }
     else if (msg == "streamFailed")
     {
         // just to keep continue live stream
         log_e("failed to run live stream");
         countHardReset = 0;
-        instance->_mqtt.publish("angkasa/syslog", "{\"syslog\" : \"live stream failed\"}");
+        instance->pubSyslog("live stream failed");
     }
     else if (msg == "ble connected")
     {
@@ -407,24 +490,24 @@ void PlatformForwarder::callback(std::string msg)
         xEventGroupSetBits(_eventGroup, EVT_DEVICE_READY);
         log_w("Device is ready!");
         instance->_mqtt.publish("angkasa/checkDevice", "{\"deviceReady\": 1}");
-        instance->_mqtt.publish("angkasa/syslog", "{\"syslog\" : \"ble connected\"}");
+        instance->pubSyslog("Camera BLE connected");
     }
     else if (msg == "ble disconnected")
     {
         countBle += 1;
         log_e("ble_disconnected for %d times", countBle);
         xEventGroupClearBits(_eventGroup, EVT_DEVICE_READY);
-        instance->_mqtt.publish("angkasa/syslog", "{\"syslog\" : \"ble disconnected\"}");
+        instance->pubSyslog("Camera BLE disconnected, Attempting to connect...");
     }
     else if (msg.find("camera_name") != std::string::npos)
     {
-        StaticJsonDocument<1024> docConfig;
+        JsonDocument docConfig;
         DeserializationError error = deserializeJson(docConfig, msg.c_str());
 
         if (error)
         {
             log_e("deserializeJson failed: %s", error.f_str());
-            instance->_mqtt.publish("angksa/syslog", "failed deserialize json");
+            instance->pubSyslog("failed deserialize json");
             return;
         }
 
@@ -433,17 +516,16 @@ void PlatformForwarder::callback(std::string msg)
 
         std::string newMsg;
         serializeJson(docConfig, newMsg);
-        serializeJsonPretty(docConfig, Serial);
+        // serializeJsonPretty(docConfig, Serial);
 
-        sendToPlatform("angkasa/settings", newMsg);
+        instance->_storage.writeFile(msg);
+        log_i("send message to platform : %s", msg.c_str());
+        instance->_mqtt.publish("angkasa/settings", msg);
     }
 }
 
 /* STATIC */ void PlatformForwarder::sendCommCallback(TimerHandle_t xTimer)
 {
-    // This function will be called when the timer expires
-    PlatformForwarder *instance = reinterpret_cast<PlatformForwarder *>(pvTimerGetTimerID(xTimer));
-
     std::string _msgCommand = instance->msgCommand;
     log_i("send command callback triggered: %s", _msgCommand.c_str());
 
@@ -460,7 +542,7 @@ void PlatformForwarder::callback(std::string msg)
 
 /*STATIC*/ void PlatformForwarder::captureSchedulerTask(void *pvParam)
 {
-    PlatformForwarder *instance = reinterpret_cast<PlatformForwarder *>(pvParam);
+    // PlatformForwarder *instance = reinterpret_cast<PlatformForwarder *>(pvParam);
     log_d("Capture Scheduler Task Start !");
     while (true)
     {
@@ -472,6 +554,7 @@ void PlatformForwarder::callback(std::string msg)
 
 /*STATIC*/ void PlatformForwarder::deviceHandlerTask(void *pvParameter)
 {
+    // PlatformForwarder *instance = reinterpret_cast<PlatformForwarder *>(pvParameter);
     log_d("device handler task start !");
     while (true)
     {
@@ -489,14 +572,23 @@ void PlatformForwarder::callback(std::string msg)
     devHardRes += 1;
     log_d("capture timer callback start for = %d", camHardRes);
     EventBits_t uxBits = xEventGroupGetBits(_eventGroup);
+
     if (uxBits & EVT_DEVICE_OFF)
     {
-        if (devHardRes >= 3)
-        {
-            log_w("re-boot device...");
-            instance->_devPow.oneCycleOn();
-            devHardRes = 0;
-        }
+        // if (devHardRes >= 3)
+        // {
+        log_w("Turning on Device");
+        instance->pubSyslog("Turning on Device");
+        instance->_devPow.oneCycleOn();
+        // }
+    }
+
+    if (devHardRes >= 10)
+    {
+        log_e("device somehow couldn't turned on...");
+        log_w("re-booting device...");
+        instance->pubSyslog("device somehow couldn't turned on...");
+        devHardRes = 0;
     }
 
     instance->_device.sendComm("{\"capture\":1}");
@@ -507,7 +599,7 @@ void PlatformForwarder::callback(std::string msg)
         {
             log_e("camera not response for 5 minutes. hard resetting...");
             instance->_camPow.oneCycleOn();
-            instance->_devPow.oneCycleOn();
+            // instance->_devPow.oneCycleOn();
             camHardRes = 0;
         }
     }
@@ -546,110 +638,42 @@ void PlatformForwarder::suspendCaptureSchedule()
     }
 }
 
-// void PlatformForwarder::heartbeatTask(void *pvParameter)
-// {
-//     static uint64_t lastHeartbeat = 0;
-//     uint16_t interval = 30000;
-//     while (true)
-//     {
-//         EventBits_t uxBits = xEventGroupGetBits(_eventGroup);
+bool PlatformForwarder::startWatchdogTimer()
+{
+    _watchDogTimer = xTimerCreate("Watchdog Timer", pdMS_TO_TICKS(WATCHDOG_TIMEOUT), pdTRUE, this, watchDogTimerCallback);
 
-//         std::string currentEvent;
+    if (_watchDogTimer == NULL)
+    {
+        log_e("Failed to create the wdt!");
+        return false;
+    }
 
-//         // if (uxBits & EVT_DEVICE_OFF)
-//         // {
-//         //     currentEvent += "Device is OFF";
-//         // }
-//         // if (uxBits & EVT_DEVICE_ON)
-//         // {
-//         //     currentEvent += "Device is ON";
-//         // }
-//         // if (uxBits & EVT_DEVICE_READY)
-//         // {
-//         //     currentEvent += ", READY";
-//         // }
-//         // else if (!(uxBits & EVT_DEVICE_READY))
-//         // {
-//         //     currentEvent += ", NOT READY";
-//         // }
-//         // if (uxBits & EVT_COMMAND_REC)
-//         // {
-//         //     currentEvent += ", all command RECEIVED";
-//         // }
-//         // else if (!(uxBits & EVT_COMMAND_REC))
-//         // {
-//         //     currentEvent += ", command NOT RECEIVED=>";
-//         //     currentEvent += instance->msgCommand;
-//         // }
-//         // if (uxBits & EVT_LIVE_STREAM)
-//         // {
-//         //     currentEvent += ", STREAMING";
-//         // }
-//         // if (uxBits & EVT_CAPTURE_SCHED)
-//         // {
-//         //     currentEvent += ", capSchedule is ON";
-//         // }
-//         // if (uxBits & EVT_DEVICE_REBOOT)
-//         // {
-//         //     currentEvent += ", REBOOT";
-//         // }
+    if (xTimerStart(_watchDogTimer, 0) != pdPASS)
+    {
+        log_e("Failed to start the wdt!");
+        return false;
+    }
 
-//         // if (millis() - lastHeartbeat >= interval)
-//         // {
-//         //     uint16_t totalCaptured = instance->capScheduler->captureCount;
-//         //     // std::string currentEvent = instance->lastCommand;
-//         //     std::string timestamp = instance->_time.getTimeStamp();
-//         //     instance->_mqtt.publish("angkasa/heartbeat",
-//         //                             "{\"time\":\"" + timestamp + "\", \"event\":\"" + currentEvent + "\", \"captured\":" + std::to_string(totalCaptured) + "}");
-//         //     lastHeartbeat = millis();
-//         // }
+    return true;
+}
 
-//         if (uxBits & EVT_DEVICE_OFF)
-//         {
-//             currentEvent = "raspi off";
-//         }
-//         else if (uxBits & EVT_DEVICE_ON)
-//         {
-//             currentEvent = "raspi on";
-//         }
-//         else if (uxBits & EVT_DEVICE_READY)
-//         {
-//             currentEvent = "raspi connected to camera";
-//         }
-//         else if (uxBits & EVT_COMMAND_REC)
-//         {
-//             currentEvent = "raspi receive command";
-//         }
-//         else if (uxBits & EVT_LIVE_STREAM)
-//         {
-//             currentEvent = "camera live stream";
-//         }
+/*STATIC*/ void PlatformForwarder::watchDogTimerCallback(TimerHandle_t xTimer)
+{
+    log_i("watchdog timer triggered...");
+    // PlatformForwarder *instance = reinterpret_cast<PlatformForwarder *>(pvTimerGetTimerID(xTimer));
+    static uint16_t count;
+    log_w("wifiDisconnected = %d", instance->wifiDisconnected);
+    if (instance->wifiDisconnected)
+    {
+        log_e("modem wifi not connected for 5 mins");
+        instance->_camPow.oneCycleOn();
+    }
 
-//         log_i("current event = %s", currentEvent.c_str());
-//         vTaskDelay(1000 / portTICK_PERIOD_MS);
-//     }
-// }
-
-// void PlatformForwarder::systemResetTask(void *pvParameter)
-// {
-//     while (true)
-//     {
-//         // std::string command;
-//         // instance->_mqtt.processMessage(command);
-//         if (instance->msgCommand.find("esp_restart") != std::string::npos)
-//         {
-//             log_i("System reset, triggered by command");
-//             esp_restart();
-//         }
-//         delay(1);
-//     }
-// }
-
-// void PlatformForwarder::mqttListenerTask(void *pvParameter)
-// {
-//     while (true)
-//     {
-//         instance->_mqtt.processMessage(instance->msgCommand);
-//         delay(1);
-//     }
-// }
+    count += 1;
+    if (count >= 360) // 3 hour lapsed
+    {
+        log_w("3 hour lapsed, rebooting system");
+        instance->pubSyslog("3 hour lapsed, rebooting system");
+        esp_restart();
+    }
+}

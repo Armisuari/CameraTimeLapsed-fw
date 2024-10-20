@@ -17,6 +17,7 @@ Time_DS3231 ds3231;
 Time_ntp ntp;
 #endif
 
+#include <WiFi.h>
 #include "mdns.h"
 #include "ota/OTA_Handler.h"
 
@@ -32,6 +33,7 @@ PlatformForwarder app(raspi, ds3231);
 PlatformForwarder app(raspi, ntp, lfs, camPow, devPow, senPow);
 #endif
 
+void startSystemResetTimer();
 void setupMDNSResponder(const char *hostname);
 
 void setup()
@@ -43,7 +45,7 @@ void setup()
     otaHandler.setup(nullptr, nullptr);
     xTaskCreate(otaHandler.task, "OtaHandler::task", 1024 * 6, NULL, 15, NULL);
 
-    //mdns
+    // mdns
     setupMDNSResponder("esp_timelapse");
 }
 

@@ -47,16 +47,29 @@ private:
     std::string lastCommand;
     static PlatformForwarder *instance;
 
+    bool wifiDisconnected = false;
+
+    void initPowerModules();
+    bool initEventGroup();
+    bool initMsgQueue();
+    bool initPeripherals();
+    void handleLastCommand();
+    void createMainTasks();
+
     static void sendToPlatform(std::string topic, std::string msg);
     static void callback(std::string msg);
+    void cbFunction();
 
     static EventGroupHandle_t _eventGroup;
     static QueueHandle_t _msgQueue;
 
     static TimerHandle_t _checkDeviceTimer;
-    static void sendCommCallback(TimerHandle_t xTimer);
     static TimerHandle_t _captureTimer;
+    static TimerHandle_t _watchDogTimer;
+
+    static void sendCommCallback(TimerHandle_t xTimer);
     static void sendCaptureCallback(TimerHandle_t xTimer);
+    static void watchDogTimerCallback(TimerHandle_t xTimer);
 
     static int countHardReset;
 
@@ -65,6 +78,7 @@ private:
     void handleDevicePower();
     bool startCheckDeviceTimer();
     void handleCapture();
+    bool startWatchdogTimer();
 
     void resumeCaptureSchedule();
     void suspendCaptureSchedule();
@@ -77,6 +91,6 @@ private:
 
     static void captureSchedulerTask(void *pvParameter);
     static void deviceHandlerTask(void *pvParameter);
-    // static void systemResetTask(void *pvParameter);
-    // static void mqttListenerTask(void *pvParameter);
+
+    void pubSyslog(std::string logMessage);
 };
