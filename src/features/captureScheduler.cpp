@@ -12,25 +12,28 @@ CaptureScheduleHandler::~CaptureScheduleHandler()
 
 bool CaptureScheduleHandler::begin()
 {
+    int maxCapture;
     // Calculate the interval in seconds (240 intervals in total)
     if (stopHour > startHour)
     {
-        interval = ((stopHour - startHour) * 60 * 60) / numCapture;
-        if (interval < 120)
-        {
-            log_w("interval %d is too low, forcing to minimum 2 minutes", interval);
-            // interval = 120; // force to minimum interval value
-            interval = 120;
-        }
-        log_d("interval: %d second", interval);
+        // interval = ((stopHour - startHour) * 60 * 60) / numCapture;
+        interval = 3600 / (stopHour - startHour + 7);
+        maxCapture = (stopHour - startHour) * 13;
+        // if (interval < 120)
+        // {
+        //     log_w("interval %d is too low, forcing to minimum 2 minutes", interval);
+        //     interval = 120;
+        // }
+        log_i("interval: %d second, max capture: %d", interval, maxCapture);
     }
     else
     {
-        interval = ((24 + stopHour - startHour) * 60 * 60) / numCapture;
+        // interval = ((24 + stopHour - startHour) * 60 * 60) / numCapture;
+        interval = 3600 / (24 + stopHour - startHour + 7);
+        maxCapture = (24 + stopHour - startHour) * 13;
+        log_i("interval: %d second, max capture: %d", interval, maxCapture);
     }
-    // log_i("Interval time : %.2f minute or %d second", (float)interval / 60, interval);
     log_i("Interval time : %.2f minute or %d second stop:%d start:%d", (float)interval / 60, interval, stopHour, startHour);
-
     return true;
 }
 
@@ -39,8 +42,6 @@ bool CaptureScheduleHandler::trigCapture(bool enable)
     if (enable)
     {
         uint32_t timeNow = _time.getCurrentTime();
-        // uint32_t startTime = convertHourToEpoch(timeNow, startHour);
-        // uint32_t stopTime = convertHourToEpoch(timeNow, stopHour);
         uint32_t startTime;
         uint32_t stopTime = convertHourToEpoch(timeNow, stopHour);
 
@@ -89,8 +90,8 @@ bool CaptureScheduleHandler::trigCapture(bool enable)
                 static int count;
                 count += 1;
                 log_d("Capture Trigger : %d\n", count);
-                if (count >= numCapture)
-                    count = 0;
+                // if (count >= numCapture)
+                //     count = 0;
                 _trigEpoch = timeNow + interval;
                 return true;
             }
@@ -103,7 +104,7 @@ bool CaptureScheduleHandler::trigCapture(bool enable)
             // Count total of skipped capture
             if (captureCount != 0)
             {
-                skippedCaptureCount = numCapture - captureCount;
+                // skippedCaptureCount = numCapture - captureCount;
                 captureCount = 0;
             }
         }
