@@ -52,6 +52,7 @@ MQTTHandler::MQTTHandler(const char *ssid, const char *password, const char *mqt
 void MQTTHandler::reconnect()
 {
     log_d("reconnecting mqtt");
+    static int count;
     while (!client.connected())
     {
         xEventGroupClearBits(_eventGroup, EVT_MQTT_CONNECTED);
@@ -80,12 +81,20 @@ void MQTTHandler::reconnect()
 
                 log_d("publishing device ready...");
                 client.publish("angkasa/checkDevice", "Device Ready !");
+                count = 0;
             }
             else
             {
                 log_e("failed, rc= %d | try again in 5 seconds", client.state());
                 // xEventGroupClearBits(_eventGroup, EVT_MQTT_CONNECTED);
                 // xEventGroupSetBits(_eventGroup, EVT_MQTT_DISCONNECTED);
+                count += 1;
+
+                if (count >= 30)
+                {
+                    esp_restart();
+                }
+
                 delay(2000);
             }
         }
