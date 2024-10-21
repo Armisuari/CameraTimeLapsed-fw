@@ -4,8 +4,6 @@
 // #include "esp_task_wdt.h"
 
 #define WATCHDOG_TIMEOUT (60000 * 5) // 5 mins timeout
-
-#define CAPTURE_SCHEDULER
 #define WDT_TIMEOUT 180
 
 PlatformForwarder *PlatformForwarder::instance = nullptr;
@@ -22,6 +20,7 @@ PlatformForwarder *PlatformForwarder::instance = nullptr;
 /* STATIC */ TaskHandle_t PlatformForwarder::deviceHandlerTaskHandle = NULL;
 
 /* STATIC */ int PlatformForwarder::countHardReset = 0;
+/* STATIC */ uint8_t PlatformForwarder::countBle = 0;
 
 PlatformForwarder::PlatformForwarder(SerialInterface &device, TimeInterface &time, StorageInterface &storage, SwitchPowerInterface &camPow, SwitchPowerInterface &devPow, PowerSensorInterface &senPow)
     : _device(device), _time(time), _storage(storage), _camPow(camPow), _devPow(devPow), _senPow(senPow)
@@ -162,19 +161,10 @@ bool PlatformForwarder::deviceHandler()
 
     receiveCommand = _mqtt.processMessage(msgCommand);
 
-    // handleLastCommand();
-
     if (!receiveCommand)
     {
         return false;
     }
-
-    log_w("msgCommand = %s", msgCommand.c_str());
-
-    JsonDocument docMsg;
-    deserializeJson(docMsg, msgCommand.c_str());
-    // serializeJsonPretty(docMsg, Serial);
-    // Serial.println();
 
     log_d("Receiving command: %s", msgCommand.c_str());
     pubSyslog("Receiving command");
@@ -188,6 +178,7 @@ bool PlatformForwarder::deviceHandler()
 
     log_i("waiting for device ready after receive command...");
     pubSyslog("waiting device ready");
+
     handleDevicePower();
     log_d("send command to device");
     _device.sendComm(msgCommand);
@@ -201,6 +192,7 @@ bool PlatformForwarder::deviceHandler()
 
     receiveCommand = false;
     msgCommand.clear();
+
     return true;
 }
 
@@ -220,6 +212,7 @@ bool PlatformForwarder::enqueueMessage(const std::string &msgCommand)
 
 void PlatformForwarder::pubSyslog(std::string logMessage)
 {
+    log_d("publish syslog");
     JsonDocument doc;
     std::string docStr;
     doc["time"] = time(NULL);
@@ -320,7 +313,9 @@ bool PlatformForwarder::processJsonCommand(const std::string &msgCommand)
     }
 
     log_d("writing last command to fs");
-    if (!_storage.writeLastCommand(msgCommand))
+
+    vTaskDelay(1000);
+    if (!_storage.writeLastCommand(msgCommand.c_str()))
     {
         log_e("failed to write last command on fs");
     }
@@ -352,7 +347,7 @@ void PlatformForwarder::handleDevicePower()
 
 bool PlatformForwarder::startCheckDeviceTimer()
 {
-    _checkDeviceTimer = xTimerCreate("checkDeviceTimer", pdMS_TO_TICKS(10000), pdTRUE, this, sendCommCallback);
+    _checkDeviceTimer = xTimerCreate("checkDeviceTimer", pdMS_TO_TICKS(30000), pdTRUE, this, sendCommCallback);
 
     if (_checkDeviceTimer == NULL)
     {
@@ -371,11 +366,7 @@ bool PlatformForwarder::startCheckDeviceTimer()
 
 void PlatformForwarder::handleCapture()
 {
-#ifdef CAPTURE_SCHEDULER
     bool scheduleEnabled = _mqtt.isScheduleEnabled();
-#else
-    bool scheduleEnabled = false;
-#endif
     EventBits_t uxBits = xEventGroupGetBits(_eventGroup);
 
     if (capScheduler->trigCapture(scheduleEnabled))
@@ -403,7 +394,11 @@ void PlatformForwarder::handleCapture()
             return;
         }
 
-        xEventGroupWaitBits(_eventGroup, EVT_DEVICE_READY, pdTRUE, pdFALSE, portMAX_DELAY);
+        if (!(uxBits & EVT_DEVICE_READY))
+        {
+            xEventGroupWaitBits(_eventGroup, EVT_DEVICE_READY, pdTRUE, pdFALSE, portMAX_DELAY);
+        }
+
         xTimerDelete(_captureTimer, 0);
 
         log_w("Triggering capture due to schedule");
@@ -412,122 +407,162 @@ void PlatformForwarder::handleCapture()
     }
 }
 
-void PlatformForwarder::cbFunction()
-{
-}
+///// STATIC ///////
 
-/*STATIC*/ void PlatformForwarder::callback(std::string msg)
+void PlatformForwarder::handleDeviceState(bool on)
 {
-    static int countBle;
-    log_d("msg = %s", msg.c_str());
-
-    if (msg == "Raspi turned on")
+    if (on)
     {
-        log_w("device turned on");
-        xEventGroupClearBits(_eventGroup, EVT_DEVICE_OFF);
+        log_w("Device turned on");
+        xEventGroupClearBits(_eventGroup, EVT_DEVICE_OFF | EVT_DEVICE_READY);
         xEventGroupSetBits(_eventGroup, EVT_DEVICE_ON);
-        instance->pubSyslog("device turned on");
+        instance->pubSyslog("Device turned on");
     }
-    else if (msg.find("shutdown") != std::string::npos)
+    else
     {
-        log_e("device turned off");
-        xEventGroupClearBits(_eventGroup, EVT_DEVICE_ON);
-        xEventGroupClearBits(_eventGroup, EVT_DEVICE_READY);
+        log_e("Device turned off");
+        xEventGroupClearBits(_eventGroup, EVT_DEVICE_ON | EVT_DEVICE_READY);
         xEventGroupSetBits(_eventGroup, EVT_DEVICE_OFF);
         vTaskDelay(10000 / portTICK_PERIOD_MS);
-        log_i("succed to backup to gdrive");
-        instance->pubSyslog("succed backup to Google drive");
+        log_i("Backup to Google Drive successful");
+        instance->pubSyslog("Backup completed");
         instance->_devPow.off();
-        instance->pubSyslog("device turned off");
+        instance->pubSyslog("Device turned off");
     }
-    else if (msg.find("captured") != std::string::npos)
+}
+
+void PlatformForwarder::handleStreamState(bool start)
+{
+    if (start)
     {
-        instance->capScheduler->captureCount++;
-        instance->_storage.writeNumCapture(std::to_string(instance->capScheduler->captureCount));
-        log_i("succed to capture by schedule for : %d", instance->capScheduler->captureCount);
-        xEventGroupSetBits(_eventGroup, EVT_DEVICE_READY);
-        instance->pubSyslog("camera capturing");
+        log_w("Live stream started");
+        xEventGroupSetBits(_eventGroup, EVT_DEVICE_READY | EVT_COMMAND_REC | EVT_LIVE_STREAM);
+        instance->pubSyslog("Live stream started");
     }
-    else if (msg == "recConfig")
+    else
     {
-        log_w("new camera config was received");
-        xEventGroupSetBits(_eventGroup, EVT_DEVICE_READY);
-        xEventGroupSetBits(_eventGroup, EVT_COMMAND_REC);
-        instance->_storage.deleteFileLastCommand();
-        instance->resumeCaptureSchedule();
-        instance->pubSyslog("receiving new camera config");
-    }
-    else if (msg == "streamStart")
-    {
-        log_w("live stream is running");
-        xEventGroupSetBits(_eventGroup, EVT_DEVICE_READY);
-        xEventGroupSetBits(_eventGroup, EVT_COMMAND_REC);
-        xEventGroupSetBits(_eventGroup, EVT_LIVE_STREAM);
-        instance->_storage.deleteFileLastCommand();
-        instance->pubSyslog("live stream start");
-    }
-    else if (msg == "streamStop")
-    {
-        log_w("live stream end");
-        xEventGroupSetBits(_eventGroup, EVT_DEVICE_READY);
-        xEventGroupSetBits(_eventGroup, EVT_COMMAND_REC);
+        log_w("Live stream stopped");
+        xEventGroupSetBits(_eventGroup, EVT_DEVICE_READY | EVT_COMMAND_REC);
         xEventGroupClearBits(_eventGroup, EVT_LIVE_STREAM);
-        instance->_storage.deleteFileLastCommand();
         instance->resumeCaptureSchedule();
-        instance->pubSyslog("live stream stop");
+        instance->pubSyslog("Live stream stopped");
     }
-    else if (msg == "streamFailed")
+}
+
+void PlatformForwarder::handleBleConnection(bool connected)
+{
+    if (connected)
     {
-        // just to keep continue live stream
-        log_e("failed to run live stream");
-        countHardReset = 0;
-        instance->pubSyslog("live stream failed");
-    }
-    else if (msg == "ble connected")
-    {
-        log_w("ble_connected at %d times", countBle);
+        log_w("BLE connected");
         countBle = 0;
         xEventGroupSetBits(_eventGroup, EVT_DEVICE_READY);
-        log_w("Device is ready!");
         instance->_mqtt.publish("angkasa/checkDevice", "{\"deviceReady\": 1}");
         instance->pubSyslog("Camera BLE connected");
     }
+    else
+    {
+        countBle++;
+        log_e("BLE disconnected (%d times)", countBle);
+        xEventGroupClearBits(_eventGroup, EVT_DEVICE_READY);
+        instance->pubSyslog("Camera BLE disconnected, attempting to reconnect...");
+    }
+}
+
+void PlatformForwarder::processCameraConfig(const std::string &msg)
+{
+    JsonDocument docConfig;
+    DeserializationError error = deserializeJson(docConfig, msg.c_str());
+
+    if (error)
+    {
+        log_e("Failed to deserialize JSON: %s", error.f_str());
+        instance->pubSyslog("JSON deserialization failed");
+        return;
+    }
+
+    docConfig["battery"] = instance->_senPow.readVoltage();
+    docConfig["battery_percentage"] = instance->_senPow.batPercent();
+
+    std::string newMsg;
+    serializeJson(docConfig, newMsg);
+
+    instance->_storage.writeFile(msg);
+    log_i("Sending config to platform: %s", newMsg.c_str());
+    instance->_mqtt.publish("angkasa/settings", newMsg);
+}
+
+void PlatformForwarder::callback(std::string msg)
+{
+    log_d("Received message: %s", msg.c_str());
+
+    if (msg == "Raspi turned on")
+    {
+        handleDeviceState(true);
+    }
+    else if (msg.find("shutdown") != std::string::npos)
+    {
+        handleDeviceState(false);
+    }
+    else if (msg.find("captured") != std::string::npos)
+    {
+        xEventGroupClearBits(_eventGroup, EVT_DEVICE_OFF);
+        xEventGroupSetBits(_eventGroup, EVT_DEVICE_READY | EVT_CAMERA_CAPTURED);
+
+        // if (_captureTimer != NULL)
+        // {
+        //     log_e("delete timer capture");
+        //     xTimerReset(_captureTimer, 0);
+        // }
+
+        instance->capScheduler->captureCount++;
+        instance->_storage.writeNumCapture(std::to_string(instance->capScheduler->captureCount));
+        log_i("Capture completed (%d)", instance->capScheduler->captureCount);
+        instance->pubSyslog("Camera captured");
+    }
+    else if (msg == "recConfig")
+    {
+        log_w("New camera config received");
+        xEventGroupSetBits(_eventGroup, EVT_DEVICE_READY | EVT_COMMAND_REC);
+        instance->_storage.deleteFileLastCommand();
+        instance->resumeCaptureSchedule();
+        instance->pubSyslog("New camera config received");
+    }
+    else if (msg == "streamStart")
+    {
+        handleStreamState(true);
+    }
+    else if (msg == "streamStop")
+    {
+        handleStreamState(false);
+    }
+    else if (msg == "streamFailed")
+    {
+        log_e("Live stream failed");
+        countHardReset = 0;
+        instance->pubSyslog("Live stream failed");
+    }
+    else if (msg == "ble connected")
+    {
+        handleBleConnection(true);
+    }
     else if (msg == "ble disconnected")
     {
-        countBle += 1;
-        log_e("ble_disconnected for %d times", countBle);
-        xEventGroupClearBits(_eventGroup, EVT_DEVICE_READY);
-        instance->pubSyslog("Camera BLE disconnected, Attempting to connect...");
+        handleBleConnection(false);
     }
     else if (msg.find("camera_name") != std::string::npos)
     {
-        JsonDocument docConfig;
-        DeserializationError error = deserializeJson(docConfig, msg.c_str());
-
-        if (error)
-        {
-            log_e("deserializeJson failed: %s", error.f_str());
-            instance->pubSyslog("failed deserialize json");
-            return;
-        }
-
-        docConfig["battery"] = instance->_senPow.readVoltage();
-        docConfig["battery_percentage"] = instance->_senPow.batPercent();
-
-        std::string newMsg;
-        serializeJson(docConfig, newMsg);
-        // serializeJsonPretty(docConfig, Serial);
-
-        instance->_storage.writeFile(msg);
-        log_i("send message to platform : %s", msg.c_str());
-        instance->_mqtt.publish("angkasa/settings", msg);
+        processCameraConfig(msg);
     }
 }
+
+///// STATIC ///////
 
 /* STATIC */ void PlatformForwarder::sendCommCallback(TimerHandle_t xTimer)
 {
     std::string _msgCommand = instance->msgCommand;
     log_i("send command callback triggered: %s", _msgCommand.c_str());
+    JsonDocument doc;
+    deserializeJson(doc, _msgCommand.c_str());
 
     EventBits_t uxBits = xEventGroupGetBits(_eventGroup);
     if (uxBits & EVT_DEVICE_OFF)
@@ -536,18 +571,34 @@ void PlatformForwarder::cbFunction()
         instance->_devPow.oneCycleOn();
     }
 
+    static int count;
+    if (doc["stream"] == 0)
+    {
+        if (uxBits & EVT_LIVE_STREAM)
+        {
+            count += 1;
+            if (count >= 3)
+            {
+                esp_restart();
+            }
+        }
+        else
+        {
+            count = 0;
+        }
+    }
+
     instance->_device.sendComm(_msgCommand);
-    log_d("conting try = %d", countHardReset);
+    // log_d("conting try = %d", countHardReset);
 }
 
 /*STATIC*/ void PlatformForwarder::captureSchedulerTask(void *pvParam)
 {
-    // PlatformForwarder *instance = reinterpret_cast<PlatformForwarder *>(pvParam);
     log_d("Capture Scheduler Task Start !");
     while (true)
     {
         instance->handleCapture();
-        delay(1);
+        vTaskDelay(1 / portTICK_PERIOD_MS);
     }
     vTaskDelete(NULL);
 }
@@ -566,43 +617,39 @@ void PlatformForwarder::cbFunction()
 
 /*STATIC*/ void PlatformForwarder::sendCaptureCallback(TimerHandle_t xTimer)
 {
-    static int camHardRes;
     static int devHardRes;
-    camHardRes += 1;
     devHardRes += 1;
-    log_d("capture timer callback start for = %d", camHardRes);
+    log_d("capture timer callback start for = %d", devHardRes);
     EventBits_t uxBits = xEventGroupGetBits(_eventGroup);
 
     if (uxBits & EVT_DEVICE_OFF)
     {
-        // if (devHardRes >= 3)
-        // {
-        log_w("Turning on Device");
-        instance->pubSyslog("Turning on Device");
+        log_w("Re-turning on Device");
+        instance->pubSyslog("Re-turning on Device");
         instance->_devPow.oneCycleOn();
-        // }
     }
 
-    if (devHardRes >= 10)
-    {
-        log_e("device somehow couldn't turned on...");
-        log_w("re-booting device...");
-        instance->pubSyslog("device somehow couldn't turned on...");
-        devHardRes = 0;
-    }
+    // if (devHardRes >= 12)
+    // {
+    //     log_e("device somehow couldn't turned on...");
+    //     // log_w("re-booting device...");
+    //     instance->pubSyslog("device somehow couldn't turned on...");
+    //     devHardRes = 0;
+    //     camHardRes = 0;
+    // }
 
-    instance->_device.sendComm("{\"capture\":1}");
+    // instance->_device.sendComm("{\"capture\":1}");
 
-    if (!(uxBits & EVT_DEVICE_READY))
-    {
-        if (camHardRes >= 10)
-        {
-            log_e("camera not response for 5 minutes. hard resetting...");
-            instance->_camPow.oneCycleOn();
-            // instance->_devPow.oneCycleOn();
-            camHardRes = 0;
-        }
-    }
+    // if (!(uxBits & EVT_DEVICE_READY))
+    // {
+    //     if (camHardRes >= 12)
+    //     {
+    //         log_e("camera not response for 5 minutes. hard resetting...");
+    //         instance->_camPow.oneCycleOn();
+    //         // instance->_devPow.oneCycleOn();
+    //         camHardRes = 0;
+    //     }
+    // }
 }
 
 void PlatformForwarder::resumeCaptureSchedule()

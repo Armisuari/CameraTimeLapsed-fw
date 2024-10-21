@@ -21,6 +21,7 @@ static const unsigned int EVT_COMMAND_REC      = BIT3;
 static const unsigned int EVT_LIVE_STREAM      = BIT4;
 static const unsigned int EVT_CAPTURE_SCHED    = BIT5;
 static const unsigned int EVT_DEVICE_REBOOT    = BIT6;
+static const unsigned int EVT_CAMERA_CAPTURED   = BIT7;
 
 class PlatformForwarder
 {
@@ -56,7 +57,11 @@ private:
     void handleLastCommand();
     void createMainTasks();
 
-    static void sendToPlatform(std::string topic, std::string msg);
+    static uint8_t countBle;
+    static void handleDeviceState(bool on);
+    static void handleStreamState(bool start);
+    static void handleBleConnection(bool connected);
+    static void processCameraConfig(const std::string &msg);
     static void callback(std::string msg);
     void cbFunction();
 
