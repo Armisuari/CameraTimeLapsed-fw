@@ -9,7 +9,7 @@ public:
     bool init();
     bool writeFile(std::string jsonString);
     bool writeNumCapture(std::string jsonString);
-    bool writeLastCommand(std::string jsonString);
+    bool writeLastCommand(const char* jsonString);
     std::string readFile();
     std::string readNumCapture();
     std::string readLastCommand();

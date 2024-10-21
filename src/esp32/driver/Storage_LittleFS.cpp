@@ -2,14 +2,14 @@
 
 bool Storage_LittleFS::init()
 {
-    if (!LittleFS.begin(true))
+    if (!LittleFS.begin())
     {
         log_e("LITTLEFS Mount failed");
         return false;
     }
     else
     {
-        log_i("SPIFFS mounted successfully");
+        log_i("LITTLEFS mounted successfully");
     }
 
     return true;
@@ -55,7 +55,7 @@ bool Storage_LittleFS::writeNumCapture(std::string jsonString)
     return true;
 }
 
-bool Storage_LittleFS::writeLastCommand(std::string jsonString)
+bool Storage_LittleFS::writeLastCommand(const char *jsonString)
 {
     File file = LittleFS.open(fileLastCommand.c_str(), "w");
     if (!file)
@@ -63,7 +63,7 @@ bool Storage_LittleFS::writeLastCommand(std::string jsonString)
         log_e("writeFile -> failed to open file for writing -> %s", fileLastCommand.c_str());
         return false;
     }
-    if (file.print(jsonString.c_str()))
+    if (file.print(jsonString))
     {
         log_i("number capture write succes");
     }
