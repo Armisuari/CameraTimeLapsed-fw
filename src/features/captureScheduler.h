@@ -3,46 +3,52 @@
 #include <string>
 #include <ctime>
 #include <cstdint>
-#include <Arduino.h>
-#include <interface/TimeInterface.h>
+#include <FS.h>
 
 class CaptureScheduleHandler
 {
 public:
-    CaptureScheduleHandler(TimeInterface &time);
-    ~CaptureScheduleHandler();
+    // Constructor that initializes the file system reference.
+    CaptureScheduleHandler(fs::FS &fs);
+
+    // Initializes the capture schedule handler (e.g., loading saved data).
     bool begin();
-    bool trigCapture(bool enable);
-    uint8_t skippedCapture();
-    uint8_t captureCount = 0;
-    uint8_t skippedCaptureCount = 0;
+
+    // Sets the capture time string and updates the internal structure.
+    bool setTimeCapture(const std::string &captureTime);
+
+    // Returns the currently set capture time as a string.
+    std::string getTimeCapture() const;
+
+    // Triggers the capture based on the time conditions.
+    bool trigCapture();
 
 private:
-    uint32_t convertHourToEpoch(uint32_t unixTime, int hour);
+    // Internal filename to store time capture data.
+    static constexpr const char *_filename = "/capture_schedule.dat";
 
-    TimeInterface &_time;
+    // Reference to the file system object (e.g., SPIFFS or SD).
+    fs::FS &_fs;
 
-    bool trigstat = false;
-    uint32_t _trigEpoch;
+    // Struct to store time capture configuration.
+    typedef struct
+    {
+        uint32_t startDate;
+        uint32_t stopDate;
+        uint8_t startHour;
+        uint8_t stopHour;
+        uint8_t captureDays;
+    } TimeCaptureData_t;
 
-    int startHour = 0;
-    int stopHour = 23;
-    uint32_t interval;
-    // uint32_t numCapture = 1000; // 13 - 14 photo for a hour | schedule interval 1 minute -> Actual around 4 minute
-    // 23 hour -> max 290 - 300 photo
-    // 11 hour -> max 140 - 145 photo
-    // 8 hour -> max 100 - 105 photo
+    // Static instance of the capture data.
+    static TimeCaptureData_t _timeCaptureData;
 
-    // 1 hour -> max 13 - 14 photo
-    // 60 second = 240 second
-    // 13 photo = 3600 second
-    // 1 photo = 277 second =  4.6 minute
-    // 100 photo =  27700 = 462 minute = 7.7 hour
+    // Calculate max number of capture
+    uint16_t calcInterval();
 
+    // Saves the current capture configuration to the file system.
+    bool save();
 
-    // 13 photo = 1 hour, interval -> 60 second | 240 second
-
-
-    // if (hour <= 1 && numPhoto > 13)
-    // interval = hour * 60 * 60 / numPhoto 
+    // Loads the capture configuration from the file system.
+    bool load();
 };
