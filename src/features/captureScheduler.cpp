@@ -13,12 +13,29 @@ CaptureScheduleHandler::~CaptureScheduleHandler()
 bool CaptureScheduleHandler::begin()
 {
     int maxCapture;
+    interval = 120;
     // Calculate the interval in seconds (240 intervals in total)
     if (stopHour > startHour)
     {
-        // interval = ((stopHour - startHour) * 60 * 60) / numCapture;
-        interval = 3600 / (stopHour - startHour + 7);
+        // const max_num_capture_hour = 13 // due to max interval is 120 seconds
+
+        // web dashboard
+        // time_duration = stop_hour - start_hour or (24 + stop_hour - start_hour)
+        // max_capture = max_num_capture_hour * time_duration
+        // num_capture[4] = {max_capture, max_capture * 0.75, max_capture * 0.5, max_capture - 0.25}
+        // output --> max_capture, num_capture
+
+        // firmware esp32
+        // min_interval = 120 // 2 mins
+        // if (num_capture == max_capture) interval = min_interval
+        // else
+        // percentage = (max_capture - num_capture) / max_capture
+        // interval = percentage * min_interval + min_interval
+        // output --> interval
+
         maxCapture = (stopHour - startHour) * 13;
+
+        // interval = 3600 / (stopHour - startHour + 7);
         // if (interval < 120)
         // {
         //     log_w("interval %d is too low, forcing to minimum 2 minutes", interval);
@@ -28,8 +45,9 @@ bool CaptureScheduleHandler::begin()
     }
     else
     {
+
         // interval = ((24 + stopHour - startHour) * 60 * 60) / numCapture;
-        interval = 3600 / (24 + stopHour - startHour + 7);
+        // interval = 3600 / (24 + stopHour - startHour + 7);
         maxCapture = (24 + stopHour - startHour) * 13;
         log_i("interval: %d second, max capture: %d", interval, maxCapture);
     }

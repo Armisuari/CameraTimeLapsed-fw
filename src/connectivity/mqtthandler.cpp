@@ -134,6 +134,13 @@ bool MQTTHandler::processMessage(std::string &message)
         log_i("parsing config json..");
         handleConfig(_message.c_str(), _message.length());
     }
+    else if (_message.find("restart") != std::string::npos)
+    {
+        log_i("System reset, triggered by command");
+        publish("angkasa/syslog", "{\"syslog\": \"System reset, triggered by command\"}");
+        esp_restart();
+        return false;
+    }
 
     message = std::move(_message);
     _message.clear();

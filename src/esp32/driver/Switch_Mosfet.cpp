@@ -23,6 +23,6 @@ void Switch_Mosfet::oneCycleOn()
 {
     log_d("One Cycle On");
     off();
-    delay(1000);
+    vTaskDelay(1000);
     on();
 }

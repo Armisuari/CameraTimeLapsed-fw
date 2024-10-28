@@ -33,7 +33,6 @@ PlatformForwarder app(raspi, ds3231);
 PlatformForwarder app(raspi, ntp, lfs, camPow, devPow, senPow);
 #endif
 
-void startSystemResetTimer();
 void setupMDNSResponder(const char *hostname);
 
 void setup()

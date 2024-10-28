@@ -5,6 +5,7 @@
 
 #define WATCHDOG_TIMEOUT (60000 * 5) // 5 mins timeout
 #define WDT_TIMEOUT 180
+// #define NO_FS
 
 PlatformForwarder *PlatformForwarder::instance = nullptr;
 
@@ -99,11 +100,19 @@ bool PlatformForwarder::initPeripherals()
     _mqtt.init();
     _mqtt.publish("angkasa/checkDevice", "{\"deviceReady\" : 0}");
 
-    bool res = _device.begin() && _time.init() && _storage.init();
+    bool res = _device.begin() && _time.init();
     if (!res)
     {
         log_e("Peripheral initialization failed");
+        pubSyslog("Peripheral initialization failed");
         return false;
+    }
+
+    if (!_storage.init())
+    {
+        log_e("Storage initialization failed, reset system");
+        pubSyslog("Storage initialization failed, reset system");
+        esp_restart();
     }
 
     _device.setCallback(callback);
@@ -181,6 +190,7 @@ bool PlatformForwarder::deviceHandler()
 
     handleDevicePower();
     log_d("send command to device");
+    pubSyslog("send command to device");
     _device.sendComm(msgCommand);
     if (!startCheckDeviceTimer())
     {
@@ -285,6 +295,7 @@ bool PlatformForwarder::processJsonCommand(const std::string &msgCommand)
     }
     else if (doc["stream"] == 1)
     {
+        xEventGroupClearBits(_eventGroup, EVT_COMMAND_REC);
         suspendCaptureSchedule();
         if (uxBits & EVT_LIVE_STREAM)
         {
@@ -304,21 +315,21 @@ bool PlatformForwarder::processJsonCommand(const std::string &msgCommand)
         }
         pubSyslog("request stop live stream");
     }
-    else if (msgCommand.find("restart") != std::string::npos)
-    {
-        log_i("System reset, triggered by command");
-        pubSyslog("System reset, triggered by command");
-        esp_restart();
-        return false;
-    }
+    // else if (msgCommand.find("restart") != std::string::npos)
+    // {
+    //     log_i("System reset, triggered by command");
+    //     pubSyslog("System reset, triggered by command");
+    //     esp_restart();
+    //     return false;
+    // }
 
-    log_d("writing last command to fs");
-
-    vTaskDelay(1000);
-    if (!_storage.writeLastCommand(msgCommand.c_str()))
-    {
-        log_e("failed to write last command on fs");
-    }
+    // log_d("writing last command to fs");
+    // pubSyslog("writing last command to fs");
+    // vTaskDelay(1000);
+    // if (!_storage.writeLastCommand(msgCommand.c_str()))
+    // {
+    //     log_e("failed to write last command on fs");
+    // }
 
     log_d("executing command !");
     return true;
@@ -411,6 +422,7 @@ void PlatformForwarder::handleCapture()
 
 void PlatformForwarder::handleDeviceState(bool on)
 {
+    EventBits_t uxBits = xEventGroupGetBits(_eventGroup);
     if (on)
     {
         log_w("Device turned on");
@@ -424,9 +436,14 @@ void PlatformForwarder::handleDeviceState(bool on)
         xEventGroupClearBits(_eventGroup, EVT_DEVICE_ON | EVT_DEVICE_READY);
         xEventGroupSetBits(_eventGroup, EVT_DEVICE_OFF);
         vTaskDelay(10000 / portTICK_PERIOD_MS);
-        log_i("Backup to Google Drive successful");
-        instance->pubSyslog("Backup completed");
-        instance->_devPow.off();
+        // log_i("Backup to Google Drive successful");
+        // instance->pubSyslog("Backup completed");
+
+        if (uxBits & EVT_COMMAND_REC)
+        {
+            instance->_devPow.off();
+        }
+
         instance->pubSyslog("Device turned off");
     }
 }
@@ -465,6 +482,13 @@ void PlatformForwarder::handleBleConnection(bool connected)
         log_e("BLE disconnected (%d times)", countBle);
         xEventGroupClearBits(_eventGroup, EVT_DEVICE_READY);
         instance->pubSyslog("Camera BLE disconnected, attempting to reconnect...");
+
+        if (countBle >= 12)
+        {
+            log_e("Camera can't connect fot 120 seconds");
+            instance->pubSyslog("Camera can't connect fot 120 seconds, restart system");
+            esp_restart();
+        }
     }
 }
 
@@ -495,6 +519,12 @@ void PlatformForwarder::callback(std::string msg)
 {
     log_d("Received message: %s", msg.c_str());
 
+    if (msg.find("backup") != std::string::npos)
+    {
+        log_i("Backup to Google Drive successful");
+        instance->pubSyslog(msg);
+    }
+
     if (msg == "Raspi turned on")
     {
         handleDeviceState(true);
@@ -519,11 +549,15 @@ void PlatformForwarder::callback(std::string msg)
         log_i("Capture completed (%d)", instance->capScheduler->captureCount);
         instance->pubSyslog("Camera captured");
     }
+    else if (msg.find("gopro sleep") != std::string::npos)
+    {
+        instance->pubSyslog("camera turned off");
+    }
     else if (msg == "recConfig")
     {
         log_w("New camera config received");
         xEventGroupSetBits(_eventGroup, EVT_DEVICE_READY | EVT_COMMAND_REC);
-        instance->_storage.deleteFileLastCommand();
+        // instance->_storage.deleteFileLastCommand();
         instance->resumeCaptureSchedule();
         instance->pubSyslog("New camera config received");
     }
@@ -567,7 +601,8 @@ void PlatformForwarder::callback(std::string msg)
     EventBits_t uxBits = xEventGroupGetBits(_eventGroup);
     if (uxBits & EVT_DEVICE_OFF)
     {
-        log_w("turn on device...");
+        log_w("Re-turning on device...");
+        instance->pubSyslog("Re-turning on device...");
         instance->_devPow.oneCycleOn();
     }
 
@@ -717,10 +752,10 @@ bool PlatformForwarder::startWatchdogTimer()
     }
 
     count += 1;
-    if (count >= 360) // 3 hour lapsed
+    if (count >= 12) // 1 hour lapsed
     {
-        log_w("3 hour lapsed, rebooting system");
-        instance->pubSyslog("3 hour lapsed, rebooting system");
+        log_w("1 hour lapsed, rebooting system");
+        instance->pubSyslog("1 hour lapsed, rebooting system");
         esp_restart();
     }
 }

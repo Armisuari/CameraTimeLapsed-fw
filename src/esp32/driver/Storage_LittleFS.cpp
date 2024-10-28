@@ -2,7 +2,7 @@
 
 bool Storage_LittleFS::init()
 {
-    if (!LittleFS.begin())
+    if (!LittleFS.begin(true))
     {
         log_e("LITTLEFS Mount failed");
         return false;
