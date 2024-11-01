@@ -4,7 +4,9 @@
 #include <functional>
 
 #include "CONFIG.h"
-#include "connectivity/mqtthandler.h"
+
+#include <WifiHandler.h>
+#include <connectivity/mqtt/MQTTHandler.h>
 
 #include <SerialInterface.h>
 #include <interface/TimeInterface.h>
@@ -28,10 +30,15 @@ class PlatformForwarder
 public:
     PlatformForwarder(SerialInterface &device, TimeInterface &time, StorageInterface &storage, SwitchPowerInterface &camPow, SwitchPowerInterface &devPow, PowerSensorInterface &senPow);
     bool begin();
-    bool deviceHandler();
+    void setClientId(const char* clientId);
 
 private:
-    MQTTHandler _mqtt{CONFIG_MAIN_WIFI_DEFAULT_SSID, CONFIG_MAIN_WIFI_DEFAULT_PASS, CONFIG_MAIN_SERVER, 1883};
+    WifiHandler _wifi{CONFIG_MAIN_WIFI_DEFAULT_SSID, CONFIG_MAIN_WIFI_DEFAULT_PASS};
+    
+    MQTTHandler _mqtt;
+    static const char* mqttAddres;
+    static const uint16_t mqttPort;
+    char _clientId[20];
 
     SerialInterface &_device;
     TimeInterface &_time;
@@ -43,13 +50,14 @@ private:
     // CaptureScheduleHandler capScheduler{_time};
     CaptureScheduleHandler *capScheduler;
 
-    bool receiveCommand = false;
+    // bool receiveCommand = false;
     std::string msgCommand;
     std::string lastCommand;
     static PlatformForwarder *instance;
 
     bool wifiDisconnected = false;
 
+    bool deviceHandler();
     void initPowerModules();
     bool initEventGroup();
     bool initMsgQueue();

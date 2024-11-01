@@ -3,7 +3,7 @@
 #define DEBUG_ONLY_ESP
 
 #include <PlatformForwarder.h>
-#include "connectivity/mqtthandler.h"
+// #include "connectivity/mqtthandler.h"
 
 #include <esp32/driver/Serial_Raspi.h>
 #include <esp32/driver/Storage_LittleFS.h>
@@ -33,11 +33,18 @@ PlatformForwarder app(raspi, ds3231);
 PlatformForwarder app(raspi, ntp, lfs, camPow, devPow, senPow);
 #endif
 
+char clientID[sizeof(CONFIG_MAIN_CLIENT_ID_PREFIX) + 6];
+
+void generateClientID(char *idBuff);
 void setupMDNSResponder(const char *hostname);
 
 void setup()
 {
     Serial.begin(115200);
+    // generateClientID(clientID);
+
+    // app.setClientId(clientID);
+    app.setClientId("fctyvubin");
     app.begin();
 
     // --- ota ---
@@ -45,7 +52,7 @@ void setup()
     xTaskCreate(otaHandler.task, "OtaHandler::task", 1024 * 6, NULL, 15, NULL);
 
     // mdns
-    setupMDNSResponder("esp_timelapse");
+    setupMDNSResponder(clientID);
 }
 
 void loop()
@@ -53,9 +60,17 @@ void loop()
     vTaskDelete(NULL);
 }
 
+void generateClientID(char *idBuff)
+{
+    const char *clientIdPrefix = CONFIG_MAIN_CLIENT_ID_PREFIX;
+    uint8_t mac[6];
+    esp_read_mac(mac, ESP_MAC_WIFI_STA);
+
+    sprintf(idBuff, "%s%02X%02X%02X", clientIdPrefix, mac[3], mac[4], mac[5]);
+}
+
 void setupMDNSResponder(const char *hostname)
 {
-    // Serial.printf("hosname: %s\n", hostname);
     ESP_ERROR_CHECK_WITHOUT_ABORT(mdns_init());
     ESP_ERROR_CHECK_WITHOUT_ABORT(mdns_hostname_set(hostname));
     ESP_LOGI("MAIN", "MDNS hostname: %s", hostname);

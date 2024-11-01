@@ -20,6 +20,7 @@ class MQTTHandler
         void setup(const char* addr, const uint16_t port);
         void setup(const char* addr, const uint16_t port, const char* clientID);
         bool addPublishSource(MQTTPublishSource* pubSource);
+        bool getRemoteMsg(std::string &remoteMessage);
 
     private:
         TaskHandle_t _taskHandle;
@@ -27,11 +28,10 @@ class MQTTHandler
         WiFiClient espClient;
         PubSubClient client;
         std::string _clientID;
-        std::string _message;
+        std::string _remoteMessage;
 
         static void _staticTaskFunc(void* pvParam);
         void _taskFunc();
 
         void MqttReceiveCallback(char *topic, byte *message, unsigned int length);
-        static void heartBeatTask(void *pvParameter);
 };

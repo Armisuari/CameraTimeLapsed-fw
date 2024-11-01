@@ -69,7 +69,7 @@ public:
 
 protected:
     virtual std::string readMQTTPayload();
-    virtual size_t readMQTTPayload(uint8_t *buff, size_t length);
+    // virtual size_t readMQTTPayload(uint8_t *buff, size_t length);
 
 private:
     std::string _formatSensorDataJson(SyslogPacket data);

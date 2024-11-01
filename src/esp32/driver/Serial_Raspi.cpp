@@ -7,9 +7,11 @@ Serial_Raspi::Serial_Raspi(int baudRate, SerialConfig sc, int rx, int tx)
 
 bool Serial_Raspi::begin()
 {
+    printf("begin\n");
     raspiSerial.begin(_baudRate, _sc, _rx, _tx);
 
     delay(2000);
+    printf("task\n");
     xTaskCreate(&Serial_Raspi::taskFunc, "task func", 4096, this, 3, NULL);
 
     return true;

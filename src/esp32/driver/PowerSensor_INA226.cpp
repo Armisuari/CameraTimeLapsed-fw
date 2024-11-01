@@ -8,8 +8,8 @@ bool PowerSensor_INA226::init()
 {
     log_d("INA226 lib version: %s", INA226_LIB_VERSION);
 
-    if (!Wire.begin(6, 7))
-    // if (!Wire.begin(21, 22))
+    // if (!Wire.begin(6, 7))
+    if (!Wire.begin(21, 22))
     {
         log_e("failed to begin I2C");
         return false;

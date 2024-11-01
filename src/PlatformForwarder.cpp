@@ -23,6 +23,11 @@ PlatformForwarder *PlatformForwarder::instance = nullptr;
 /* STATIC */ int PlatformForwarder::countHardReset = 0;
 /* STATIC */ uint8_t PlatformForwarder::countBle = 0;
 
+/* STATIC */ const char *PlatformForwarder::mqttAddres = CONFIG_MAIN_SERVER;
+/* STATIC */ const uint16_t PlatformForwarder::mqttPort = 1883;
+
+static const char *TAG = "App";
+
 PlatformForwarder::PlatformForwarder(SerialInterface &device, TimeInterface &time, StorageInterface &storage, SwitchPowerInterface &camPow, SwitchPowerInterface &devPow, PowerSensorInterface &senPow)
     : _device(device), _time(time), _storage(storage), _camPow(camPow), _devPow(devPow), _senPow(senPow)
 {
@@ -30,9 +35,20 @@ PlatformForwarder::PlatformForwarder(SerialInterface &device, TimeInterface &tim
     capScheduler = new CaptureScheduleHandler(_time);
 }
 
+void PlatformForwarder::setClientId(const char *clientId)
+{
+    strncpy(_clientId, clientId, 23);
+    _clientId[23] = '\0';
+    ESP_LOGD(TAG, "clientId = %s", _clientId);
+}
+
 bool PlatformForwarder::begin()
 {
     delay(4000); // Initial delay
+
+    _wifi.init();
+    _mqtt.setup(mqttAddres, mqttPort, _clientId);
+
     initPowerModules();
 
     if (!initEventGroup() || !initMsgQueue())
@@ -40,24 +56,22 @@ bool PlatformForwarder::begin()
     if (!initPeripherals())
         return false;
 
-    JsonDocument jsonDoc;
-
-    handleLastCommand();
-    log_w("msgCommand = %s", msgCommand.c_str());
+    // handleLastCommand();
+    // log_w("msgCommand = %s", msgCommand.c_str());
 
     log_d("Initialization complete, publishing system log");
-    pubSyslog("init done");
+    // pubSyslog("init done");
 
-    createMainTasks();
+    // createMainTasks();
 
-    if (!startWatchdogTimer())
-    {
-        log_e("failed to run wdt");
-        pubSyslog("failed to run wdt");
-        esp_restart();
-    }
+    // if (!startWatchdogTimer())
+    // {
+    //     log_e("failed to run wdt");
+    //     pubSyslog("failed to run wdt");
+    //     esp_restart();
+    // }
 
-    log_w("msgCommand = %s", msgCommand.c_str());
+    // log_w("msgCommand = %s", msgCommand.c_str());
     return true;
 }
 
@@ -97,17 +111,26 @@ bool PlatformForwarder::initMsgQueue()
 
 bool PlatformForwarder::initPeripherals()
 {
-    _mqtt.init();
-    _mqtt.publish("angkasa/checkDevice", "{\"deviceReady\" : 0}");
+    // _mqtt.init();
+    // _mqtt.publish("angkasa/checkDevice", "{\"deviceReady\" : 0}");
 
-    bool res = _device.begin() && _time.init();
-    if (!res)
+    log_d("device");
+    if (!_device.begin())
     {
-        log_e("Peripheral initialization failed");
-        pubSyslog("Peripheral initialization failed");
-        return false;
+        log_e("Device initialization failed, reset system");
+        pubSyslog("Device initialization failed, reset system");
+        // esp_restart();
     }
 
+    log_d("time");
+    if (!_time.init())
+    {
+        log_e("Time initialization failed, reset system");
+        pubSyslog("Time initialization failed, reset system");
+        // esp_restart();
+    }
+
+    log_d("init stg");
     if (!_storage.init())
     {
         log_e("Storage initialization failed, reset system");
@@ -115,11 +138,14 @@ bool PlatformForwarder::initPeripherals()
         esp_restart();
     }
 
-    _device.setCallback(callback);
+    // log_d("set cb");
+    // _device.setCallback(callback);
 
+    log_d("capsched begin");
     capScheduler->begin();
     delay(2000); // Let the scheduler stabilize after initialization
 
+    log_d("capture count");
     capScheduler->captureCount = std::move(atoi(_storage.readNumCapture().c_str()));
     log_d("Loaded capture count data: %d", capScheduler->captureCount);
 
@@ -168,8 +194,8 @@ bool PlatformForwarder::deviceHandler()
     //     receiveCommand = true;
     // }
 
-    receiveCommand = _mqtt.processMessage(msgCommand);
-
+    // receiveCommand = _mqtt.processMessage(msgCommand);
+    bool receiveCommand = _mqtt.getRemoteMsg(msgCommand);
     if (!receiveCommand)
     {
         return false;
@@ -222,20 +248,20 @@ bool PlatformForwarder::enqueueMessage(const std::string &msgCommand)
 
 void PlatformForwarder::pubSyslog(std::string logMessage)
 {
-    log_d("publish syslog");
-    JsonDocument doc;
-    std::string docStr;
-    doc["time"] = time(NULL);
-    doc["msg"] = logMessage;
+    // log_d("publish syslog");
+    // JsonDocument doc;
+    // std::string docStr;
+    // doc["time"] = time(NULL);
+    // doc["msg"] = logMessage;
 
-    serializeJson(doc, docStr);
-    // serializeJson(doc, Serial);
-    _mqtt.publish("angkasa/syslog", docStr);
+    // serializeJson(doc, docStr);
+    // // serializeJson(doc, Serial);
+    // _mqtt.publish("angkasa/syslog", docStr);
 }
 
 bool PlatformForwarder::processJsonCommand(const std::string &msgCommand)
 {
-    DynamicJsonDocument doc(1024);
+    DynamicJsonDocument doc(512);
     DeserializationError error = deserializeJson(doc, msgCommand.c_str());
 
     EventBits_t uxBits = xEventGroupGetBits(_eventGroup);
@@ -284,7 +310,7 @@ bool PlatformForwarder::processJsonCommand(const std::string &msgCommand)
         // serializeJsonPretty(docConfig, Serial);
 
         log_d("readFile(): %s", newConfigJson.c_str());
-        _mqtt.publish("angkasa/settings", newConfigJson);
+        // _mqtt.publish("angkasa/settings", newConfigJson);
         pubSyslog("request camera config");
         return false;
     }
@@ -377,7 +403,8 @@ bool PlatformForwarder::startCheckDeviceTimer()
 
 void PlatformForwarder::handleCapture()
 {
-    bool scheduleEnabled = _mqtt.isScheduleEnabled();
+    // bool scheduleEnabled = _mqtt.isScheduleEnabled();
+    bool scheduleEnabled = true;
     EventBits_t uxBits = xEventGroupGetBits(_eventGroup);
 
     if (capScheduler->trigCapture(scheduleEnabled))
@@ -473,7 +500,7 @@ void PlatformForwarder::handleBleConnection(bool connected)
         log_w("BLE connected");
         countBle = 0;
         xEventGroupSetBits(_eventGroup, EVT_DEVICE_READY);
-        instance->_mqtt.publish("angkasa/checkDevice", "{\"deviceReady\": 1}");
+        // instance->_mqtt.publish("angkasa/checkDevice", "{\"deviceReady\": 1}");
         instance->pubSyslog("Camera BLE connected");
     }
     else
@@ -512,7 +539,7 @@ void PlatformForwarder::processCameraConfig(const std::string &msg)
 
     instance->_storage.writeFile(msg);
     log_i("Sending config to platform: %s", newMsg.c_str());
-    instance->_mqtt.publish("angkasa/settings", newMsg);
+    // instance->_mqtt.publish("angkasa/settings", newMsg);
 }
 
 void PlatformForwarder::callback(std::string msg)

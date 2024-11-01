@@ -1,4 +1,5 @@
 #include "SyslogPubSource.h"
+#include <cstring>
 
 SyslogPubSource::SyslogPubSource(const char* clientID, std::string topic, size_t bufferSize) : 
 MQTTPublishSource(topic, bufferSize)
@@ -48,7 +49,7 @@ std::string SyslogPubSource::_formatSensorDataJson(SyslogPacket data)
     char buffer[1024];
     sprintf(buffer, 
         "{"                       \
-            "\"event\":%d,"       \
+            "\"syslog\":%d,"       \
             "\"message\":\"%s\","     \
             "\"time\":%d,"        \
             "\"clientId\":\"%s\"" \
